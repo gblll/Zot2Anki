@@ -18,12 +18,12 @@ $env:PYTHONUTF8 = "1"
 
 function Disable-ConsoleQuickEdit {
     try {
-        if ($null -eq ("Zotero2AnkiConsoleMode" -as [type])) {
+        if ($null -eq ("Zot2AnkiConsoleMode" -as [type])) {
             Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class Zotero2AnkiConsoleMode
+public static class Zot2AnkiConsoleMode
 {
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern IntPtr GetStdHandle(int nStdHandle);
@@ -39,9 +39,9 @@ public static class Zotero2AnkiConsoleMode
 '@
         }
 
-        $handle = [Zotero2AnkiConsoleMode]::GetStdHandle(-10)
+        $handle = [Zot2AnkiConsoleMode]::GetStdHandle(-10)
         [uint32]$originalMode = 0
-        if (-not [Zotero2AnkiConsoleMode]::GetConsoleMode($handle, [ref]$originalMode)) {
+        if (-not [Zot2AnkiConsoleMode]::GetConsoleMode($handle, [ref]$originalMode)) {
             return $null
         }
 
@@ -50,7 +50,7 @@ public static class Zotero2AnkiConsoleMode
         if (($newMode -band 0x0040) -ne 0) {
             $newMode = $newMode -bxor 0x0040
         }
-        if (-not [Zotero2AnkiConsoleMode]::SetConsoleMode($handle, [uint32]$newMode)) {
+        if (-not [Zot2AnkiConsoleMode]::SetConsoleMode($handle, [uint32]$newMode)) {
             return $null
         }
 
@@ -71,7 +71,7 @@ function Restore-ConsoleMode {
 
     if ($null -ne $State) {
         try {
-            [void][Zotero2AnkiConsoleMode]::SetConsoleMode(
+            [void][Zot2AnkiConsoleMode]::SetConsoleMode(
                 [IntPtr]$State.Handle,
                 [uint32]$State.Mode
             )
@@ -114,7 +114,7 @@ try {
     $runId = Get-Date -Format "yyyyMMdd-HHmmss"
     $logDirectory = Join-Path $outputRoot "logs"
     $logPath = Join-Path $logDirectory "sync-$runId.log"
-    $reportPath = Join-Path $outputRoot "zotero2anki-sync-$runId.json"
+    $reportPath = Join-Path $outputRoot "zot2anki-sync-$runId.json"
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 
     Write-Host "[1/3] Checking applications, paths, and dependencies..."
@@ -124,7 +124,7 @@ try {
         $names = ($running.ProcessName | Sort-Object -Unique) -join ", "
         throw "Detected running application(s): $names. Close Zotero and Anki manually, wait a few seconds, and retry. This script never terminates them automatically."
     }
-    $env:ZOTERO2ANKI_APPS_CLOSED_CHECKED = "1"
+    $env:ZOT2ANKI_APPS_CLOSED_CHECKED = "1"
 
     if (-not (Test-Path -LiteralPath $Database)) { throw "Zotero database not found: $Database" }
     if (-not (Test-Path -LiteralPath $collection)) { throw "Anki collection not found: $collection" }
@@ -197,7 +197,7 @@ catch {
     }
 
     Write-Host ""
-    Write-Host "Zotero2Anki sync failed: $message" -ForegroundColor Red
+    Write-Host "Zot2Anki sync failed: $message" -ForegroundColor Red
     if ($null -ne $logPath) {
         Write-Host "Detailed log: $logPath"
         if (Test-Path -LiteralPath $logPath -PathType Leaf) {

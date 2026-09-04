@@ -438,7 +438,7 @@ class AcademicExampleClient:
         )
 
     def _json(self, url: str) -> dict:
-        request = Request(url, headers={"User-Agent": "Zotero2Anki/0.2.0"})
+        request = Request(url, headers={"User-Agent": "Zot2Anki/0.2.0"})
         for attempt in range(3):
             try:
                 with urlopen(request, timeout=self.timeout) as response:

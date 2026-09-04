@@ -1,8 +1,8 @@
-var Zotero2AnkiCore;
-var Zotero2Anki;
+var Zot2AnkiCore;
+var Zot2Anki;
 
 function log(message) {
-  Zotero.debug(`Zotero2Anki: ${message}`);
+  Zotero.debug(`Zot2Anki: ${message}`);
 }
 
 function install() {
@@ -13,37 +13,37 @@ async function startup({ id, version, rootURI }) {
   log(`Starting ${version}`);
 
   Services.scriptloader.loadSubScript(rootURI + "core.js");
-  Services.scriptloader.loadSubScript(rootURI + "zotero2anki.js");
+  Services.scriptloader.loadSubScript(rootURI + "zot2anki.js");
 
-  Zotero2Anki.init({ id, version, rootURI });
-  Zotero2Anki.addToAllWindows();
-  Zotero2Anki.registerMenu();
+  Zot2Anki.init({ id, version, rootURI });
+  Zot2Anki.addToAllWindows();
+  Zot2Anki.registerMenu();
 
-  Zotero2Anki.preferencePaneID = await Zotero.PreferencePanes.register({
+  Zot2Anki.preferencePaneID = await Zotero.PreferencePanes.register({
     pluginID: id,
-    id: "zotero2anki-preferences",
-    label: "Zotero2Anki",
+    id: "zot2anki-preferences",
+    label: "Zot2Anki",
     src: rootURI + "preferences/preferences.xhtml"
   });
 }
 
 function onMainWindowLoad({ window }) {
-  Zotero2Anki?.addToWindow(window);
+  Zot2Anki?.addToWindow(window);
 }
 
 function onMainWindowUnload({ window }) {
-  Zotero2Anki?.removeFromWindow(window);
+  Zot2Anki?.removeFromWindow(window);
 }
 
 function shutdown() {
   log("Shutting down");
 
-  if (Zotero2Anki) {
-    Zotero2Anki.shutdown();
+  if (Zot2Anki) {
+    Zot2Anki.shutdown();
   }
 
-  Zotero2Anki = undefined;
-  Zotero2AnkiCore = undefined;
+  Zot2Anki = undefined;
+  Zot2AnkiCore = undefined;
 }
 
 function uninstall() {

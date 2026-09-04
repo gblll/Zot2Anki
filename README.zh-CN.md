@@ -1,4 +1,4 @@
-# Zotero2Anki
+# Zot2Anki
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -52,7 +52,7 @@ PowerShell 与 Python 共用同一套配置解析逻辑。真实路径、账户�
 
 ## 日常同步
 
-保存 Zotero 中的修改，然后**手动完全退出 Zotero 和 Anki**。双击 `Sync-Zotero2Anki.cmd`，或运行：
+保存 Zotero 中的修改，然后**手动完全退出 Zotero 和 Anki**。双击 `Syne_Zot2Anki.cmd`，或运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync_vocabulary.ps1
@@ -66,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync_vocabulary.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_desktop_shortcut.ps1
 ```
 
-快捷方式名称是 **Sync Zotero2Anki**。目标位置根据本机项目目录自动设置，快捷方式本身不进入版本管理；项目可以放在任意文件夹。
+快捷方式名称是 **Syne_Zot2Anki**。目标位置根据本机项目目录自动设置，快捷方式本身不进入版本管理；项目可以放在任意文件夹。
 
 进阶入口：
 
@@ -81,6 +81,8 @@ python scripts/export_vocabulary_note.py --no-examples --no-online
 ## 卡片和输出
 
 牌组和笔记类型名称：`Zotero2Anki Vocabulary`。
+
+项目现已更名为 **Zot2Anki**。为继续识别原有卡片，Anki 牌组、笔记类型及同步标签保留原有名称；此次项目改名不会迁移 Anki 数据或另建一套卡片。
 
 字段为 `Word`、`Symbol`、`Chn`、`Example`、`Source`、`ZoteroKeys`、`Notes`；只有 `Notes` 专供个人编辑。模板保存在 `anki-template/`。
 

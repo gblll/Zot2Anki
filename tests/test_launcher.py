@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class LauncherContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.launcher = (ROOT / "Sync-Zotero2Anki.cmd").read_text(encoding="utf-8")
+        cls.launcher = (ROOT / "Syne_Zot2Anki.cmd").read_text(encoding="utf-8")
         cls.sync_script = (ROOT / "scripts" / "sync_vocabulary.ps1").read_text(
             encoding="utf-8"
         )
@@ -62,10 +62,10 @@ class LauncherContractTests(unittest.TestCase):
         self.assertIn('GetUnresolvedProviderPathFromPSPath($Config)', self.sync_script)
         self.assertIn('$collection = $settings.collection', self.sync_script)
         self.assertNotIn("FromBase64String", self.sync_script)
-        self.assertIn('"Sync Zotero2Anki"', self.shortcut_installer)
+        self.assertIn('"Syne_Zot2Anki"', self.shortcut_installer)
 
     def test_shortcut_targets_launcher_and_uses_anki_icon(self):
-        self.assertIn('"Sync-Zotero2Anki.cmd"', self.shortcut_installer)
+        self.assertIn('"Syne_Zot2Anki.cmd"', self.shortcut_installer)
         self.assertIn("$shortcut.TargetPath = $launcher", self.shortcut_installer)
         self.assertIn("$shortcut.WorkingDirectory = $repoRoot", self.shortcut_installer)
         self.assertIn('$shortcut.IconLocation = "$ankiExe,0"', self.shortcut_installer)

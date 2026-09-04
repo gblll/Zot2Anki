@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$launcher = Join-Path $repoRoot "Sync-Zotero2Anki.cmd"
+$launcher = Join-Path $repoRoot "Syne_Zot2Anki.cmd"
 $configPath = Join-Path $repoRoot "config.local.json"
 if (-not $AnkiExe -and (Test-Path -LiteralPath $configPath)) {
     $settings = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -19,7 +19,7 @@ if (-not $AnkiExe -and (Test-Path -LiteralPath $configPath)) {
     }
 }
 if (-not $AnkiExe) { $AnkiExe = Join-Path $env:LOCALAPPDATA "Programs\Anki\Anki.exe" }
-$shortcutName = "Sync Zotero2Anki"
+$shortcutName = "Syne_Zot2Anki"
 $shortcutPath = Join-Path $DesktopPath ($shortcutName + ".lnk")
 
 if (-not (Test-Path -LiteralPath $launcher)) {

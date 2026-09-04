@@ -41,7 +41,7 @@ def run(packages: Path, template_dir: Path) -> None:
     front = (template_dir / "front.html").read_text(encoding="utf-8")
     back = (template_dir / "back.html").read_text(encoding="utf-8")
     css = (template_dir / "styling.css").read_text(encoding="utf-8")
-    with tempfile.TemporaryDirectory(prefix="zotero2anki-anki-integration-") as directory:
+    with tempfile.TemporaryDirectory(prefix="zot2anki-anki-integration-") as directory:
         root = Path(directory)
         source_path = root / "source.anki2"
         collection = collection_class(str(source_path))
@@ -122,7 +122,7 @@ def run_existing_migration(packages: Path, template_dir: Path, source_path: Path
     front = (template_dir / "front.html").read_text(encoding="utf-8")
     back = (template_dir / "back.html").read_text(encoding="utf-8")
     css = (template_dir / "styling.css").read_text(encoding="utf-8")
-    with tempfile.TemporaryDirectory(prefix="zotero2anki-existing-migration-") as directory:
+    with tempfile.TemporaryDirectory(prefix="zot2anki-existing-migration-") as directory:
         copy_path = Path(directory) / "collection.anki2"
         shutil.copy2(source_path, copy_path)
         collection = collection_class(str(copy_path))

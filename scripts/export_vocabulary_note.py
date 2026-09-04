@@ -707,8 +707,8 @@ def serialize_review_tsv(cards: list[Card]) -> str:
 def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = None) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M")
-    vocabulary_path = output_dir / f"zotero-vocabulary-{stamp}.tsv"
-    review_path = output_dir / f"zotero-vocabulary-{stamp}.review.tsv"
+    vocabulary_path = output_dir / f"zot2anki-vocabulary-{stamp}.tsv"
+    review_path = output_dir / f"zot2anki-vocabulary-{stamp}.review.tsv"
     vocabulary_path.write_text(serialize_anki_tsv(cards), encoding="utf-8", newline="")
     review_path.write_text(serialize_review_tsv(cards), encoding="utf-8", newline="")
     return vocabulary_path, review_path

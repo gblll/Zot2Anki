@@ -4,9 +4,9 @@
 
 ## 安装与生命周期
 
-1. 运行 `scripts/build.ps1`，安装 `dist/zotero2anki-0.1.0.xpi`。
+1. 运行 `scripts/build.ps1`，安装 `dist/zot2anki-0.1.0.xpi`。
 2. 确认“工具”菜单显示“导出 Anki 单词表…”。
-3. 在 Zotero 设置中确认存在 Zotero2Anki 页面，默认颜色为 `#ff6666`、关键词为“生词”。
+3. 在 Zotero 设置中确认存在 Zot2Anki 页面，默认颜色为 `#ff6666`、关键词为“生词”。
 4. 禁用、重新启用插件，确认菜单和设置页没有重复；卸载后两者均消失。
 
 ## 筛选与合并夹具

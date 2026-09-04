@@ -1,6 +1,7 @@
 "use strict";
 
-var Zotero2AnkiCore = (() => {
+var Zot2AnkiCore = (() => {
+  // Keep the existing sync tag so older exports remain compatible.
   const DEFAULT_FIXED_TAG = "Zotero2Anki";
   const TSV_HEADER = [
     "#separator:Tab",
@@ -242,5 +243,5 @@ var Zotero2AnkiCore = (() => {
 })();
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = Zotero2AnkiCore;
+  module.exports = Zot2AnkiCore;
 }

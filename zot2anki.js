@@ -1,7 +1,7 @@
 "use strict";
 
-var Zotero2Anki = (() => {
-  const MENU_ID = "zotero2anki-tools-menu";
+var Zot2Anki = (() => {
+  const MENU_ID = "zot2anki-tools-menu";
   const PREF_COLOR = "extensions.zotero2anki.filterColor";
   const PREF_KEYWORD = "extensions.zotero2anki.tagKeyword";
   const DEFAULT_COLOR = "#ff6666";
@@ -16,7 +16,7 @@ var Zotero2Anki = (() => {
   function strings() {
     if (isChinese()) {
       return {
-        title: "Zotero2Anki",
+        title: "Zot2Anki",
         selectOneLibrary: "请在 Zotero 左侧栏中选择一个资料库后再导出。不能同时导出多个资料库。",
         alreadyRunning: "另一个单词表导出任务正在运行。",
         scanning: "正在整理 Anki 单词表",
@@ -45,7 +45,7 @@ var Zotero2Anki = (() => {
     }
 
     return {
-      title: "Zotero2Anki",
+      title: "Zot2Anki",
       selectOneLibrary: "Select one library in the Zotero sidebar before exporting. Multiple libraries cannot be exported together.",
       alreadyRunning: "Another vocabulary export is already running.",
       scanning: "Preparing Anki vocabulary",
@@ -83,7 +83,7 @@ var Zotero2Anki = (() => {
 
   function defaultFilename(date = new Date()) {
     return [
-      "zotero2anki-vocabulary-",
+      "zot2anki-vocabulary-",
       date.getFullYear(),
       pad(date.getMonth() + 1),
       pad(date.getDate()),
@@ -108,7 +108,7 @@ var Zotero2Anki = (() => {
       return ids.length ? await Zotero.Items.getAsync(ids) : [];
     }
     catch (error) {
-      Zotero.debug(`Zotero2Anki: Annotation search failed; falling back to item scan: ${error}`);
+      Zotero.debug(`Zot2Anki: Annotation search failed; falling back to item scan: ${error}`);
       const items = await Zotero.Items.getAll(libraryID, false, false);
       return items.filter((item) => item.isAnnotation());
     }
@@ -191,7 +191,7 @@ var Zotero2Anki = (() => {
           annotationText: annotation.annotationText,
           tags
         };
-        if (!Zotero2AnkiCore.matchesAnnotation(candidate, filter)) continue;
+        if (!Zot2AnkiCore.matchesAnnotation(candidate, filter)) continue;
 
         const source = await getSource(annotation, localizedStrings);
         records.push({
@@ -203,7 +203,7 @@ var Zotero2Anki = (() => {
           source
         });
         stats.matched += 1;
-        if (!Zotero2AnkiCore.normalizeComment(annotation.annotationComment)) {
+        if (!Zot2AnkiCore.normalizeComment(annotation.annotationComment)) {
           stats.emptyComments += 1;
         }
       }
@@ -252,7 +252,7 @@ var Zotero2Anki = (() => {
       }
 
       const filter = {
-        color: Zotero2AnkiCore.normalizeColor(getPreference(PREF_COLOR, DEFAULT_COLOR)) || DEFAULT_COLOR,
+        color: Zot2AnkiCore.normalizeColor(getPreference(PREF_COLOR, DEFAULT_COLOR)) || DEFAULT_COLOR,
         tagKeyword: getPreference(PREF_KEYWORD, DEFAULT_KEYWORD)
       };
 
@@ -262,8 +262,8 @@ var Zotero2Anki = (() => {
       progressWindow.show();
 
       const { records, stats } = await collectRecords(libraryIDs[0], filter, localizedStrings);
-      const cards = Zotero2AnkiCore.buildCards(records, {
-        fixedTag: Zotero2AnkiCore.DEFAULT_FIXED_TAG,
+      const cards = Zot2AnkiCore.buildCards(records, {
+        fixedTag: Zot2AnkiCore.DEFAULT_FIXED_TAG,
         labels: {
           definition: localizedStrings.definition,
           sources: localizedStrings.sources,
@@ -285,7 +285,7 @@ var Zotero2Anki = (() => {
       const outputPath = await chooseOutputPath(window, localizedStrings);
       if (!outputPath) return;
 
-      const tsv = Zotero2AnkiCore.serializeTSV(cards);
+      const tsv = Zot2AnkiCore.serializeTSV(cards);
       await IOUtils.writeUTF8(outputPath, tsv);
       showAlert(window, localizedStrings.success(stats, outputPath));
     }
@@ -313,7 +313,7 @@ var Zotero2Anki = (() => {
     },
 
     addToWindow(window) {
-      window?.MozXULElement?.insertFTLIfNeeded("zotero2anki.ftl");
+      window?.MozXULElement?.insertFTLIfNeeded("zot2anki.ftl");
     },
 
     addToAllWindows() {
@@ -324,7 +324,7 @@ var Zotero2Anki = (() => {
 
     removeFromWindow(window) {
       window?.document
-        ?.querySelector('link[href="zotero2anki.ftl"]')
+        ?.querySelector('link[href="zot2anki.ftl"]')
         ?.remove();
     },
 
@@ -341,7 +341,7 @@ var Zotero2Anki = (() => {
         target: "main/menubar/tools",
         menus: [{
           menuType: "menuitem",
-          l10nID: "zotero2anki-menu-export",
+          l10nID: "zot2anki-menu-export",
           enableForTabTypes: ["library", "reader/*"],
           onCommand: (event) => {
             const window = event?.target?.ownerGlobal || Zotero.getMainWindow();

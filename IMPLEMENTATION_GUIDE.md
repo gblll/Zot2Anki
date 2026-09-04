@@ -43,15 +43,17 @@ The identifiers above are placeholders. Use real Zotero-generated links in your 
 
 1. Save your vocabulary edits in Zotero.
 2. Manually close Zotero and Anki completely.
-3. Run `Sync-Zotero2Anki.cmd` or the PowerShell entry point.
+3. Run `Syne_Zot2Anki.cmd` or the PowerShell entry point.
 4. Review the completion message and generated review TSV.
 5. Check the configured Anki profile after the application opens.
 
 Opening Anki does not itself select a specific profile. The launcher stops if either application is running; it never terminates them automatically. It disables console Quick Edit during the run, saves detailed logs, and verifies the report's run identifier before reopening Anki.
 
-The optional installer creates a generic **Sync Zotero2Anki** shortcut pointing to the local checkout. Recreate it after moving the project. Existing shortcuts are not automatically renamed or removed.
+The optional installer creates a generic **Syne_Zot2Anki** shortcut pointing to the local checkout. Recreate it after moving the project. Existing shortcuts are not automatically renamed or removed.
 
 ## Sync behavior and templates
+
+The project and launcher are now named Zot2Anki and `Syne_Zot2Anki.cmd`. Persistent Anki deck/note-type names and the sync tag retain their original identifiers. The legacy Zotero add-on ID, preference keys, source CSS classes, and theme-storage fallback also remain stable. These intentional compatibility identifiers are not stale branding and must not be renamed without a tested migration.
 
 The script backs up `collection.anki2`, reads Zotero through a read-only SQLite connection, and exports parsed vocabulary. It then updates the `Zotero2Anki Vocabulary` note type and deck, applies vocabulary updates, exports packages, and writes a report.
 

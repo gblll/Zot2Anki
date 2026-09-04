@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $distRoot)) {
     New-Item -ItemType Directory -Path $distRoot | Out-Null
 }
 $distRoot = (Resolve-Path -LiteralPath $distRoot).Path
-$outputPath = [System.IO.Path]::GetFullPath((Join-Path $distRoot "zotero2anki-$version.xpi"))
+$outputPath = [System.IO.Path]::GetFullPath((Join-Path $distRoot "zot2anki-$version.xpi"))
 $distPrefix = $distRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 if (-not $outputPath.StartsWith($distPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to write outside the dist directory: $outputPath"
@@ -29,7 +29,7 @@ $rootFiles = @(
     "bootstrap.js",
     "prefs.js",
     "core.js",
-    "zotero2anki.js"
+    "zot2anki.js"
 )
 $files = foreach ($relativePath in $rootFiles) {
     Get-Item -LiteralPath (Join-Path $projectRoot $relativePath)
@@ -71,7 +71,7 @@ finally {
 $readArchive = [System.IO.Compression.ZipFile]::OpenRead($outputPath)
 try {
     $entryNames = @($readArchive.Entries | ForEach-Object FullName)
-    foreach ($requiredEntry in @("manifest.json", "bootstrap.js", "core.js", "zotero2anki.js")) {
+    foreach ($requiredEntry in @("manifest.json", "bootstrap.js", "core.js", "zot2anki.js")) {
         if ($entryNames -notcontains $requiredEntry) {
             throw "Package validation failed: missing $requiredEntry"
         }

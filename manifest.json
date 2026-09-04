@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "Zotero2Anki",
+  "name": "Zot2Anki",
   "version": "0.1.0",
   "description": "Export tagged Zotero highlights as an Anki-ready vocabulary list.",
   "applications": {

@@ -1,4 +1,4 @@
-# Zotero2Anki
+# Zot2Anki
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -52,7 +52,7 @@ Both PowerShell and Python use the same configuration resolver. Real paths, prof
 
 ## Run a sync
 
-Save your Zotero edits, then **fully close Zotero and Anki yourself**. Double-click `Sync-Zotero2Anki.cmd`, or run:
+Save your Zotero edits, then **fully close Zotero and Anki yourself**. Double-click `Syne_Zot2Anki.cmd`, or run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync_vocabulary.ps1
@@ -66,7 +66,7 @@ Optional desktop shortcut:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_desktop_shortcut.ps1
 ```
 
-The shortcut is named **Sync Zotero2Anki**. Its target is resolved from your local checkout; the shortcut itself is not versioned. The project can live in any folder.
+The shortcut is named **Syne_Zot2Anki**. Its target is resolved from your local checkout; the shortcut itself is not versioned. The project can live in any folder.
 
 Advanced entry points:
 
@@ -81,6 +81,8 @@ The export-only command writes TSV without opening or modifying Anki. The Python
 ## Cards and outputs
 
 Deck and note type: `Zotero2Anki Vocabulary`.
+
+The project is now named **Zot2Anki**. Existing Anki deck/note-type names and the sync tag intentionally retain their original values so the rename does not create a separate set of cards. No Anki data migration is performed by this rename.
 
 Fields: `Word`, `Symbol`, `Chn`, `Example`, `Source`, `ZoteroKeys`, `Notes`. Only `Notes` is reserved for personal edits. Templates live in `anki-template/`.
 

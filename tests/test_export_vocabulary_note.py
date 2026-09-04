@@ -208,8 +208,8 @@ class SerializationReviewTests(unittest.TestCase):
             vocabulary_path, review_path = exporter.write_exports(
                 [], Path(temp_dir), "20260101-120000"
             )
-            self.assertEqual(vocabulary_path.name, "zotero-vocabulary-20260101-120000.tsv")
-            self.assertEqual(review_path.name, "zotero-vocabulary-20260101-120000.review.tsv")
+            self.assertEqual(vocabulary_path.name, "zot2anki-vocabulary-20260101-120000.tsv")
+            self.assertEqual(review_path.name, "zot2anki-vocabulary-20260101-120000.review.tsv")
             self.assertTrue(vocabulary_path.is_file())
             self.assertTrue(review_path.is_file())
 

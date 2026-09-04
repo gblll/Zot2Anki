@@ -28,6 +28,8 @@ except ModuleNotFoundError:
 
 
 DEFAULT_ANKI_PACKAGES = local_config.DEFAULT_ANKI_PACKAGES
+# Persistent Anki identifiers stay unchanged when the project is rebranded.
+# Changing these would disconnect this sync from existing notes and cards.
 DEFAULT_DECK = "Zotero2Anki Vocabulary"
 DEFAULT_NOTETYPE = "Zotero2Anki Vocabulary"
 DESIRED_FIELDS = ["Word", "Symbol", "Chn", "Example", "Source", "ZoteroKeys", "Notes"]
@@ -68,7 +70,7 @@ def _sha256(path: Path) -> str:
 
 
 def _running_applications() -> list[str]:
-    if os.environ.get("ZOTERO2ANKI_APPS_CLOSED_CHECKED") == "1":
+    if os.environ.get("ZOT2ANKI_APPS_CLOSED_CHECKED") == "1":
         return []
     if sys.platform != "win32":
         return []
@@ -261,7 +263,7 @@ def _build_clean_package(
     collection_path: Path,
     output_path: Path,
 ) -> dict[str, int]:
-    with tempfile.TemporaryDirectory(prefix="zotero2anki-clean-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="zot2anki-clean-") as temp_dir:
         temp_root = Path(temp_dir)
         temp_collection = temp_root / "collection.anki2"
         shutil.copy2(collection_path, temp_collection)
@@ -353,8 +355,8 @@ def main(argv: list[str] | None = None) -> int:
     front = args.front.read_text(encoding="utf-8")
     back = args.back.read_text(encoding="utf-8")
     css = args.css.read_text(encoding="utf-8")
-    personal_path = output_dir / f"zotero2anki-vocabulary-{timestamp}.personal.apkg"
-    clean_path = output_dir / f"zotero2anki-vocabulary-{timestamp}.clean.apkg"
+    personal_path = output_dir / f"zot2anki-vocabulary-{timestamp}.personal.apkg"
+    clean_path = output_dir / f"zot2anki-vocabulary-{timestamp}.clean.apkg"
 
     collection = collection_class(str(collection_path))
     try:
@@ -391,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
             "backup": str(backup_path),
         },
     }
-    report_path = output_dir / f"zotero2anki-sync-{timestamp}.json"
+    report_path = output_dir / f"zot2anki-sync-{timestamp}.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Sync complete. Report: {report_path}")
     return 0

@@ -37,7 +37,7 @@ def validate_package(
         names = archive.namelist()
         forbidden = [name for name in names if name.lower().endswith((".pdf", ".sqlite", ".sqlite-wal"))]
         assert not forbidden, forbidden
-    with tempfile.TemporaryDirectory(prefix="zotero2anki-apkg-validation-") as directory:
+    with tempfile.TemporaryDirectory(prefix="zot2anki-apkg-validation-") as directory:
         collection = collection_class(str(Path(directory) / "collection.anki2"))
         try:
             request = request_class(
