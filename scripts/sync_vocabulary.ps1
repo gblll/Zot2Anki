@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Config = "",
     [string]$Database = "",
@@ -9,7 +9,13 @@ param(
     [string]$Collection = "",
     [string]$AnkiPackages = "",
     [string]$AnkiExe = "",
-    [switch]$NoOnline
+    [switch]$NoOnline,
+    [switch]$Check,
+    [switch]$DryRun,
+    [switch]$AllowLargeRemoval,
+    [switch]$RefreshExamples,
+    [string]$Recover = "",
+    [switch]$NoOpenAnki
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,130 +91,57 @@ function Restore-ConsoleMode {
 
 $consoleModeState = Disable-ConsoleQuickEdit
 $scriptExitCode = 1
-$logPath = $null
-
 try {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-    if (-not $Config) { $Config = Join-Path $repoRoot "config.local.json" }
-    $Config = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Config)
-    $python = Get-Command python -ErrorAction Stop
-    $configArguments = @((Join-Path $PSScriptRoot "local_config.py"), "--config", $Config)
+    $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        throw "Project .venv is missing. Run scripts/setup.ps1 first."
+    }
+    $arguments = @((Join-Path $PSScriptRoot "sync_vocabulary.py"))
     $overrides = @{
-        "database" = $Database; "note-title" = $NoteTitle; "output-dir" = $OutputDir
-        "anki-profile" = $AnkiProfile; "anki-root" = $AnkiRoot; "collection" = $Collection
-        "anki-packages" = $AnkiPackages; "anki-exe" = $AnkiExe
+        "config" = $Config; "database" = $Database; "note-title" = $NoteTitle
+        "output-dir" = $OutputDir; "anki-profile" = $AnkiProfile; "anki-root" = $AnkiRoot
+        "collection" = $Collection; "anki-packages" = $AnkiPackages; "anki-exe" = $AnkiExe
+        "recover" = $Recover
     }
-    foreach ($key in $overrides.Keys) {
-        if ($overrides[$key]) { $configArguments += @("--$key", $overrides[$key]) }
+    foreach ($name in $overrides.Keys) {
+        if ($overrides[$name]) { $arguments += @("--$name", $overrides[$name]) }
     }
-    if ($NoOnline) { $configArguments += "--no-online" }
-    $configJson = & $python.Source @configArguments
-    if ($LASTEXITCODE -ne 0) { throw "Invalid local configuration. See the configuration error above." }
-    $settings = ($configJson -join "`n") | ConvertFrom-Json
-    $Database = $settings.database
-    $NoteTitle = $settings.note_title
-    $outputRoot = $settings.output_dir
-    $collection = $settings.collection
-    $ankiPackages = $settings.anki_packages
-    $ankiExe = $settings.anki_exe
-    $runId = Get-Date -Format "yyyyMMdd-HHmmss"
-    $logDirectory = Join-Path $outputRoot "logs"
-    $logPath = Join-Path $logDirectory "sync-$runId.log"
-    $reportPath = Join-Path $outputRoot "zot2anki-sync-$runId.json"
-    New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
-
-    Write-Host "[1/3] Checking applications, paths, and dependencies..."
-
-    $running = Get-Process -Name anki,zotero -ErrorAction SilentlyContinue
-    if ($running) {
-        $names = ($running.ProcessName | Sort-Object -Unique) -join ", "
-        throw "Detected running application(s): $names. Close Zotero and Anki manually, wait a few seconds, and retry. This script never terminates them automatically."
+    foreach ($flag in @(@("no-online", $NoOnline), @("check", $Check), @("dry-run", $DryRun),
+                       @("allow-large-removal", $AllowLargeRemoval), @("refresh-examples", $RefreshExamples))) {
+        if ($flag[1]) { $arguments += "--$($flag[0])" }
     }
-    $env:ZOT2ANKI_APPS_CLOSED_CHECKED = "1"
-
-    if (-not (Test-Path -LiteralPath $Database)) { throw "Zotero database not found: $Database" }
-    if (-not (Test-Path -LiteralPath $collection)) { throw "Anki collection not found: $collection" }
-    if (-not (Test-Path -LiteralPath $ankiPackages)) { throw "Anki Python packages not found: $ankiPackages" }
-    if (-not (Test-Path -LiteralPath $ankiExe)) { throw "Anki executable not found: $ankiExe" }
-
-    & $python.Source -c "import pymupdf" 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "PyMuPDF is missing. Run: python -m pip install -r requirements.txt"
-    }
-
-    $arguments = @(
-        (Join-Path $PSScriptRoot "sync_vocabulary.py"),
-        "--config", $Config,
-        "--database", $Database,
-        "--note-title", $NoteTitle,
-        "--output-dir", $outputRoot,
-        "--collection", $collection,
-        "--anki-packages", $ankiPackages,
-        "--timestamp", $runId
-    )
-    if ($settings.no_online) { $arguments += "--no-online" }
-
-    Write-Host "[2/3] Synchronizing the configured Anki collection. This may take several minutes..."
-    Write-Host "      Detailed log: $logPath"
-
-    Push-Location $repoRoot
-    try {
-        & $python.Source @arguments *> $logPath
-        $pythonExitCode = $LASTEXITCODE
-    }
-    finally {
-        Pop-Location
-    }
-
-    if ($pythonExitCode -ne 0) {
-        throw "Sync failed with exit code $pythonExitCode."
-    }
-    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
-        throw "Sync process exited successfully but did not create its report: $reportPath"
-    }
-    try {
+    # Python emits a short status and the journal path, not private report contents.
+    $output = @(& $python @arguments)
+    $scriptExitCode = $LASTEXITCODE
+    $output | ForEach-Object { Write-Host $_ }
+    if ($scriptExitCode -eq 0 -and -not ($Check -or $DryRun -or $Recover)) {
+        $line = $output | Where-Object { $_ -like "Sync complete. Report: *" } | Select-Object -Last 1
+        if (-not $line) { throw "Sync did not return a completed report." }
+        $reportPath = $line.Substring("Sync complete. Report: ".Length)
+        if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { throw "Report is missing." }
         $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($report.stage -ne "complete" -or -not $report.committed) { throw "Report does not confirm commit completion." }
+        Write-Host "Updated collection: $($report.collection)"
+        if ($report.profile -and -not $NoOpenAnki) {
+            $configArguments = @((Join-Path $PSScriptRoot "local_config.py"))
+            foreach ($name in $overrides.Keys) {
+                if ($name -ne "recover" -and $overrides[$name]) { $configArguments += @("--$name", $overrides[$name]) }
+            }
+            $settings = (& $python @configArguments) | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "Cannot resolve Anki launch settings." }
+            $ankiExe = $settings.anki_exe
+            if (Test-Path -LiteralPath $ankiExe -PathType Leaf) {
+                Start-Process -FilePath $ankiExe -ArgumentList @("-b", "`"$($settings.anki_root)`"", "-p", "`"$($report.profile)`"")
+            }
+        }
     }
-    catch {
-        throw "Sync report is not valid JSON: $reportPath"
-    }
-    if ([string]$report.timestamp -ne $runId) {
-        throw "Sync report timestamp does not match this run: $reportPath"
-    }
-
-    Write-Host (
-        "[3/3] Sync complete: added {0}, updated {1}, total {2}. Reopening Anki..." -f
-        $report.sync.added,
-        $report.sync.updated,
-        $report.final.cards
-    )
-    Start-Process -FilePath $ankiExe
-    $scriptExitCode = 0
 }
 catch {
-    $message = $_.Exception.Message
-    if ($null -ne $logPath) {
-        try {
-            "PowerShell failure: $message" | Out-File -LiteralPath $logPath -Append
-        }
-        catch {
-            # Continue showing the original failure even if the log is unwritable.
-        }
-    }
-
-    Write-Host ""
-    Write-Host "Zot2Anki sync failed: $message" -ForegroundColor Red
-    if ($null -ne $logPath) {
-        Write-Host "Detailed log: $logPath"
-        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-            Write-Host ""
-            Write-Host "Last log lines:"
-            Get-Content -LiteralPath $logPath -Tail 20 -ErrorAction SilentlyContinue
-        }
-    }
+    Write-Host ("Zot2Anki failed: " + $_.Exception.Message) -ForegroundColor Red
+    $scriptExitCode = 2
 }
 finally {
     Restore-ConsoleMode $consoleModeState
 }
-
 exit $scriptExitCode

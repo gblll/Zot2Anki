@@ -216,7 +216,7 @@ var Zot2AnkiCore = (() => {
 
   function serializeTSV(cards) {
     const rows = (cards || []).map((card) => [
-      sanitizeTSVCell(card.front),
+      sanitizeTSVCell(escapeHTML(card.front)),
       sanitizeTSVCell(card.back),
       sanitizeTSVCell((card.tags || []).join(" "))
     ].join("\t"));

@@ -35,21 +35,18 @@ class LauncherContractTests(unittest.TestCase):
         self.assertIn("0x0040", self.sync_script)
         self.assertIn("Restore-ConsoleMode", self.sync_script)
 
-    def test_python_output_is_redirected_to_a_per_run_log(self):
-        self.assertIn('Get-Date -Format "yyyyMMdd-HHmmss"', self.sync_script)
-        self.assertIn('"logs"', self.sync_script)
-        self.assertIn('"sync-$runId.log"', self.sync_script)
-        self.assertIn('& $python.Source @arguments *> $logPath', self.sync_script)
-        self.assertIn('"--timestamp", $runId', self.sync_script)
+    def test_launcher_uses_only_project_venv(self):
+        self.assertIn('.venv', self.sync_script)
+        self.assertNotIn('Get-Command python', self.sync_script)
+        self.assertIn('"--$name"', self.sync_script)
+        for flag in ('check', 'dry-run', 'allow-large-removal', 'refresh-examples'):
+            self.assertIn(flag, self.sync_script)
 
-    def test_success_requires_a_valid_matching_report(self):
-        self.assertIn("Test-Path -LiteralPath $reportPath -PathType Leaf", self.sync_script)
-        self.assertIn("ConvertFrom-Json", self.sync_script)
-        self.assertIn("$report.timestamp -ne $runId", self.sync_script)
-        self.assertLess(
-            self.sync_script.index("ConvertFrom-Json"),
-            self.sync_script.index("Start-Process -FilePath $ankiExe"),
-        )
+    def test_success_requires_commit_and_known_profile(self):
+        self.assertIn('$report.stage -ne "complete"', self.sync_script)
+        self.assertIn('$report.committed', self.sync_script)
+        self.assertIn('$report.profile -and -not $NoOpenAnki', self.sync_script)
+        self.assertIn('"-p"', self.sync_script)
 
     def test_python_cli_does_not_print_the_full_report(self):
         self.assertNotIn("print(json.dumps(report", self.python_sync_script)
@@ -57,10 +54,6 @@ class LauncherContractTests(unittest.TestCase):
 
     def test_launcher_uses_shared_private_configuration(self):
         self.assertIn('"local_config.py"', self.sync_script)
-        self.assertIn('"config.local.json"', self.sync_script)
-        self.assertIn('"--config", $Config', self.sync_script)
-        self.assertIn('GetUnresolvedProviderPathFromPSPath($Config)', self.sync_script)
-        self.assertIn('$collection = $settings.collection', self.sync_script)
         self.assertNotIn("FromBase64String", self.sync_script)
         self.assertIn('"Syne_Zot2Anki"', self.shortcut_installer)
 

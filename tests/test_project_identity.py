@@ -54,15 +54,13 @@ class ProjectIdentityTests(unittest.TestCase):
             available = set(re.findall(r"^([a-z0-9-]+)\s*=", text, re.MULTILINE))
             self.assertTrue(references <= available, language)
 
-    def test_renamed_launcher_and_preflight_flag_agree(self):
-        self.assertTrue((ROOT / "Syne_Zot2Anki.cmd").is_file())
-        launcher = (ROOT / "scripts/sync_vocabulary.ps1").read_text(encoding="utf-8")
-        self.assertIn('$env:ZOT2ANKI_APPS_CLOSED_CHECKED = "1"', launcher)
-        with patch.dict("os.environ", {"ZOT2ANKI_APPS_CLOSED_CHECKED": "1"}, clear=True), patch.object(
-            sync.subprocess, "run"
-        ) as process:
-            self.assertEqual(sync._running_applications(), [])
-            process.assert_not_called()
+    def test_launcher_cannot_bypass_python_process_check(self):
+        self.assertTrue((ROOT / 'Syne_Zot2Anki.cmd').is_file())
+        with patch.dict('os.environ', {'ZOT2ANKI_APPS_CLOSED_CHECKED': '1'}), patch.object(sync.sys, 'platform', 'win32'), patch.object(sync.subprocess, 'run') as process:
+            process.return_value.returncode = 0
+            process.return_value.stdout = '"anki.exe"'
+            self.assertIn('Anki', sync._running_applications())
+            self.assertEqual(process.call_count, 2)
 
 
 if __name__ == "__main__":

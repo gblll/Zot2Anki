@@ -56,7 +56,10 @@ class SourceAssociationTests(unittest.TestCase):
         connection = sqlite3.connect(":memory:")
         connection.executescript(
             """
-            CREATE TABLE items (itemID INTEGER PRIMARY KEY, key TEXT);
+            CREATE TABLE items (itemID INTEGER PRIMARY KEY, key TEXT, libraryID INTEGER DEFAULT 1);
+            CREATE TABLE libraries (libraryID INTEGER, type TEXT);
+            CREATE TABLE groups (groupID INTEGER, libraryID INTEGER);
+            INSERT INTO libraries VALUES (1, 'user');
             CREATE TABLE itemAnnotations (
                 itemID INTEGER, parentItemID INTEGER, text TEXT,
                 pageLabel TEXT, position TEXT
@@ -66,7 +69,7 @@ class SourceAssociationTests(unittest.TestCase):
             CREATE TABLE itemData (itemID INTEGER, fieldID INTEGER, valueID INTEGER);
             CREATE TABLE fields (fieldID INTEGER, fieldName TEXT);
             CREATE TABLE itemDataValues (valueID INTEGER, value TEXT);
-            INSERT INTO items VALUES (1, 'ANNKEY'), (2, 'ATTKEY'), (3, 'PARENT');
+            INSERT INTO items(itemID,key) VALUES (1, 'ANNKEY'), (2, 'ATTKEY'), (3, 'PARENT');
             INSERT INTO itemAnnotations VALUES (
                 1, 2, 'readiness', '7',
                 '{"pageIndex": 6, "rects": [[10, 20, 30, 40]]}'
@@ -79,7 +82,7 @@ class SourceAssociationTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory:
             href = "zotero://open-pdf/library/items/ATTKEY?page=7&annotation=ANNKEY"
-            context = examples.load_source_contexts(connection, [href], Path(directory))["ANNKEY"]
+            context = examples.load_source_contexts(connection, [href], Path(directory))["library/ATTKEY/ANNKEY"]
             self.assertEqual(context.attachment_key, "ATTKEY")
             self.assertEqual(context.page_index, 6)
             self.assertEqual(context.rects, ((10.0, 20.0, 30.0, 40.0),))

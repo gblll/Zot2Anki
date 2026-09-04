@@ -15,6 +15,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+try:
+    from .source_identity import source_identity
+    from .sync_storage import atomic_json
+except ImportError:
+    from source_identity import source_identity
+    from sync_storage import atomic_json
+
 
 ANNOTATION_KEY_PATTERN = re.compile(r"[?&]annotation=([A-Z0-9]+)", re.IGNORECASE)
 ATTACHMENT_KEY_PATTERN = re.compile(r"zotero://open-pdf/(?:library|groups/\d+)/items/([A-Z0-9]+)", re.IGNORECASE)
@@ -53,6 +60,7 @@ class ExampleCandidate:
     doi: str = ""
     url: str = ""
     source_href: str = ""
+    verified_provider: str = ""
 
     def identity(self) -> str:
         return normalize_for_match(self.text)
@@ -104,17 +112,20 @@ def load_source_contexts(
 ) -> dict[str, SourceContext]:
     """Resolve note links to Zotero annotation/PDF metadata without modifying Zotero."""
 
-    href_by_key = {
-        key: href
-        for href in hrefs
-        if (key := extract_annotation_key(href))
-    }
     contexts: dict[str, SourceContext] = {}
-    keys = list(href_by_key)
-    for batch in _chunks(keys):
-        placeholders = ",".join("?" for _ in batch)
+    for href in dict.fromkeys(hrefs):
+        identity = source_identity(href)
+        if not identity:
+            continue
+        namespace, attachment_key, annotation_key = identity.rsplit('/', 2)
+        if namespace == 'library':
+            libraries = connection.execute("SELECT libraryID FROM libraries WHERE type = 'user'").fetchall()
+        else:
+            libraries = connection.execute('SELECT libraryID FROM groups WHERE groupID = ?', (int(namespace.split('/')[1]),)).fetchall()
+        if len(libraries) != 1:
+            continue
         rows = connection.execute(
-            f"""
+            """
             SELECT
                 ann.key,
                 attachment.key,
@@ -145,21 +156,27 @@ def load_source_contexts(
             JOIN items AS attachment ON attachment.itemID = annotation.parentItemID
             LEFT JOIN itemAttachments AS attachmentData ON attachmentData.itemID = attachment.itemID
             LEFT JOIN deletedItems AS deleted ON deleted.itemID = ann.itemID
-            WHERE deleted.itemID IS NULL AND ann.key IN ({placeholders})
+            WHERE deleted.itemID IS NULL AND ann.key = ? AND attachment.key = ?
+              AND ann.libraryID = attachment.libraryID
+              AND ann.libraryID = ?
+              AND NOT EXISTS (SELECT 1 FROM deletedItems WHERE itemID = attachment.itemID)
+              AND NOT EXISTS (SELECT 1 FROM deletedItems WHERE itemID = attachmentData.parentItemID)
             """,
-            batch,
+            (annotation_key, attachment_key, libraries[0][0]),
         ).fetchall()
+        if len(rows) > 1:
+            raise ValueError('Ambiguous Zotero source identity')
         for row in rows:
             annotation_key = str(row[0]).upper()
             try:
                 position = json.loads(row[5] or "{}")
                 rects = tuple(tuple(float(value) for value in rect) for rect in position.get("rects", ()))
                 page_index = int(position.get("pageIndex", -1))
-            except (TypeError, ValueError, json.JSONDecodeError):
+            except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
                 rects = ()
                 page_index = -1
             attachment_key = str(row[1]).upper()
-            contexts[annotation_key] = SourceContext(
+            contexts[identity] = SourceContext(
                 annotation_key=annotation_key,
                 attachment_key=attachment_key,
                 attachment_path=_resolve_attachment_path(data_dir, attachment_key, row[2]),
@@ -169,7 +186,7 @@ def load_source_contexts(
                 rects=rects,
                 item_title=str(row[6] or ""),
                 doi=str(row[7] or ""),
-                href=href_by_key[annotation_key],
+                href=href,
             )
     return contexts
 
@@ -238,11 +255,15 @@ def find_term_span(text: str, term: str) -> tuple[int, int] | None:
     normalized_term, _ = _normalized_with_map(term)
     if not normalized_term:
         return None
-    start = normalized_text.find(normalized_term)
-    if start < 0:
-        return None
-    end = start + len(normalized_term) - 1
-    return positions[start], positions[end] + 1
+    offset = 0
+    while (start := normalized_text.find(normalized_term, offset)) >= 0:
+        end = start + len(normalized_term) - 1
+        left, right = positions[start], positions[end] + 1
+        if ((left == 0 or not (text[left - 1].isalnum() or text[left - 1] == '_')) and
+                (right == len(text) or not (text[right].isalnum() or text[right] == '_'))):
+            return left, right
+        offset = start + 1
+    return None
 
 
 def _sentence_containing(text: str, term: str) -> str | None:
@@ -418,9 +439,10 @@ def _year_from_parts(parts) -> str:
 
 
 class AcademicExampleClient:
-    def __init__(self, cache_path: Path, timeout: float = 15.0) -> None:
+    def __init__(self, cache_path: Path, timeout: float = 15.0, *, refresh: bool = False) -> None:
         self.cache_path = cache_path
         self.timeout = timeout
+        self.refresh = refresh
         self.cache = self._load_cache()
 
     def _load_cache(self) -> dict:
@@ -431,11 +453,7 @@ class AcademicExampleClient:
             return {}
 
     def _save_cache(self) -> None:
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.write_text(
-            json.dumps(self.cache, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        atomic_json(self.cache_path, self.cache)
 
     def _json(self, url: str) -> dict:
         request = Request(url, headers={"User-Agent": "Zot2Anki/0.2.0"})
@@ -484,7 +502,8 @@ class AcademicExampleClient:
                     journal=" ".join(item.get("container-title") or []),
                     year=_year_from_parts(item.get("published", {}).get("date-parts")),
                     doi=doi,
-                    url=f"https://doi.org/{quote(doi, safe='/')}"
+                    url=f"https://doi.org/{quote(doi, safe='/')}",
+                    verified_provider="crossref"
                 )
         return None
 
@@ -503,16 +522,22 @@ class AcademicExampleClient:
                     journal=str(item.get("journalTitle", "")),
                     year=str(item.get("pubYear", "")),
                     doi=doi,
-                    url=f"https://doi.org/{quote(doi, safe='/')}"
+                    url=f"https://doi.org/{quote(doi, safe='/')}",
+                    verified_provider="europe_pmc"
                 )
         return None
 
     def find(self, term: str) -> ExampleCandidate | None:
         key = normalize_for_match(term)
         cached = self.cache.get(key)
-        if isinstance(cached, dict) and "result" in cached:
-            result = cached["result"]
-            return ExampleCandidate(**result) if result else None
+        if not self.refresh and isinstance(cached, dict) and cached.get('status') in ('found', 'empty'):
+            try:
+                age = (datetime.now(timezone.utc) - datetime.fromisoformat(cached['fetched_at'])).total_seconds()
+                ttl = 30 * 86400 if cached['status'] == 'found' else 86400
+                if 0 <= age < ttl:
+                    return ExampleCandidate(**cached['result']) if cached['status'] == 'found' else None
+            except (KeyError, TypeError, ValueError):
+                pass
         result = None
         errors: list[str] = []
         for provider in (self._crossref, self._europe_pmc):
@@ -523,10 +548,14 @@ class AcademicExampleClient:
                 continue
             if result is not None:
                 break
-        self.cache[key] = {
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "error": "; ".join(errors),
-            "result": asdict(result) if result else None,
-        }
-        self._save_cache()
+        if result is not None or not errors:
+            self.cache[key] = {
+                'fetched_at': datetime.now(timezone.utc).isoformat(),
+                'status': 'found' if result else 'empty',
+                'result': asdict(result) if result else None,
+            }
+            self._save_cache()
+        elif key in self.cache:
+            del self.cache[key]
+            self._save_cache()
         return result

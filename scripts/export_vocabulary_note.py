@@ -17,6 +17,7 @@ import unicodedata
 
 try:
     from scripts import local_config
+    from scripts.source_identity import source_identity, escaped_word, word_identity
     from scripts.vocabulary_examples import (
         AcademicExampleClient,
         ExampleCandidate,
@@ -28,6 +29,7 @@ try:
     )
 except ModuleNotFoundError:  # Direct execution from scripts/.
     import local_config
+    from source_identity import source_identity, escaped_word, word_identity
     from vocabulary_examples import (
         AcademicExampleClient,
         ExampleCandidate,
@@ -122,7 +124,7 @@ def normalize_front(value: str) -> str:
 
 
 def dedupe_key(value: str) -> str:
-    return normalize_front(value).casefold()
+    return word_identity(value)
 
 
 def sanitize_tsv_cell(value: str) -> str:
@@ -422,19 +424,21 @@ def enrich_records_with_examples(
     data_dir: Path,
     *,
     cache_path: Path,
-    online_fallback: bool = True,
+    online_fallback: bool = False,
+    refresh_examples: bool = False,
 ) -> dict[str, int]:
     """Attach Zotero metadata and at most one local/online result per source record."""
 
-    hrefs = [record.href for record in records if record.href]
+    valid = [record for record in records if record.front and source_identity(record.href)]
+    hrefs = [record.href for record in valid]
     contexts = load_source_contexts(connection, hrefs, data_dir)
     local_sentences = 0
     local_fragments = 0
     online_sentences = 0
     missing_sources = 0
-    online_client = AcademicExampleClient(cache_path) if online_fallback else None
+    online_client = AcademicExampleClient(cache_path, refresh=refresh_examples) if online_fallback else None
     with PdfExampleExtractor() as extractor:
-        for record in records:
+        for record in valid:
             if not record.front or not record.href:
                 continue
             record.zotero_key = extract_annotation_key(record.href)
@@ -443,12 +447,13 @@ def enrich_records_with_examples(
                 _append_unique(record.review_reasons, "missing_annotation_key")
                 missing_sources += 1
             else:
-                context = contexts.get(record.zotero_key)
+                context = contexts.get(source_identity(record.href))
                 record.source_context = context
                 if context is None:
                     _append_unique(record.example_tags, "MissingSource")
                     _append_unique(record.review_reasons, "annotation_not_found")
                     missing_sources += 1
+                    continue  # Never send text from an unresolved/deleted source online.
                 else:
                     outcome = extractor.extract(context, record.front)
                     for tag in outcome.tags:
@@ -662,7 +667,7 @@ def build_cards(records: list[ParagraphRecord]) -> tuple[list[Card], dict[str, i
 def serialize_anki_tsv(cards: list[Card]) -> str:
     lines = list(ANKI_HEADERS)
     for card in cards:
-        word = html.escape(normalize_front(card.word), quote=True)
+        word = escaped_word(normalize_front(card.word))
         fields = [
             word,
             card.symbol_html,
@@ -714,6 +719,16 @@ def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = N
     return vocabulary_path, review_path
 
 
+def validate_records(records):
+    damaged = [record.index for record in records
+               if (record.front or record.code_count) and
+               (not record.front or not source_identity(record.href) or record.link_count != 1)]
+    if damaged:
+        raise ExportError(f'生词来源格式损坏，段落序号：{damaged}')
+    if not any(record.front and source_identity(record.href) for record in records):
+        raise ExportError('未解析出有效生词，停止同步')
+
+
 def export_note(
     database: Path,
     note_title: str,
@@ -721,14 +736,18 @@ def export_note(
     timestamp: str | None = None,
     *,
     extract_examples: bool = True,
-    online_fallback: bool = True,
+    online_fallback: bool = False,
     cache_path: Path | None = None,
     review_annotation_keys: list[str] | None = None,
+    refresh_examples: bool = False,
+    strict: bool = False,
 ):
     connection, connection_mode = open_database_readonly(database)
     try:
         note = find_note(connection, note_title)
         records = parse_note_html(note.note_html)
+        if strict:
+            validate_records(records)
         review_keys = {key.upper() for key in (review_annotation_keys or [])}
         for record in records:
             record.zotero_key = extract_annotation_key(record.href)
@@ -742,11 +761,14 @@ def export_note(
                 database.expanduser().resolve().parent,
                 cache_path=cache_path or output_dir / "cache" / "academic-examples.json",
                 online_fallback=online_fallback,
+                refresh_examples=refresh_examples,
             )
     finally:
         connection.close()
     cards, stats = build_cards(records)
     stats.update(example_stats)
+    if strict and (not cards or stats.get('missing_sources', 0)):
+        raise ExportError('解析结果为空或来源无法对应到有效 annotation，停止同步')
     vocabulary_path, review_path = write_exports(cards, output_dir, timestamp)
     return note, cards, stats, vocabulary_path, review_path, connection_mode
 

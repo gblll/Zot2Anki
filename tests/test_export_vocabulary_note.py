@@ -156,7 +156,7 @@ class SerializationTests(unittest.TestCase):
 
 
 class ExampleFallbackTests(unittest.TestCase):
-    def test_missing_annotation_still_uses_online_fallback(self):
+    def test_missing_annotation_never_sends_text_online(self):
         record = exporter.ParagraphRecord(
             index=0,
             front="readiness",
@@ -174,16 +174,11 @@ class ExampleFallbackTests(unittest.TestCase):
                 return None
 
         class FakeOnline:
-            def __init__(self, _cache):
+            def __init__(self, _cache, **kwargs):
                 pass
 
             def find(self, _term):
-                from scripts.vocabulary_examples import ExampleCandidate
-                return ExampleCandidate(
-                    "The readiness metric was evaluated across all study participants.",
-                    "online",
-                    doi="10.1/test",
-                )
+                raise AssertionError('Invalid source text must not be sent online')
 
         with (
             patch.object(exporter, "load_source_contexts", return_value={}),
@@ -195,10 +190,11 @@ class ExampleFallbackTests(unittest.TestCase):
                 [record],
                 Path("."),
                 cache_path=Path("cache.json"),
+                online_fallback=True,
             )
         self.assertIn("MissingSource", record.example_tags)
-        self.assertIn("OnlineExample", record.example_tags)
-        self.assertEqual(record.examples[0].kind, "online")
+        self.assertNotIn("OnlineExample", record.example_tags)
+        self.assertEqual(record.examples, [])
         self.assertEqual(stats["missing_sources"], 1)
 
 

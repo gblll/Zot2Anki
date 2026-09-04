@@ -33,6 +33,7 @@ def resolve_config(
     overrides: dict | None = None,
     *,
     require_collection: bool = True,
+    require_source: bool = True,
 ) -> dict:
     """CLI values override local JSON; no Anki profile is selected implicitly."""
     path = (config_path or DEFAULT_CONFIG).expanduser().resolve()
@@ -78,7 +79,7 @@ def resolve_config(
     values.setdefault("output_dir", ROOT / "dist")
     values.setdefault("no_online", True)
     values["review_annotation_keys"] = [key.upper() for key in review_keys]
-    if not values.get("note_title", "").strip():
+    if require_source and not values.get("note_title", "").strip():
         raise ConfigError("Set note_title in config.local.json or pass --note-title (exact Zotero Note title).")
     if not values.get("collection") and values.get("anki_profile"):
         profile = values["anki_profile"]
@@ -92,8 +93,8 @@ def resolve_config(
     return values
 
 
-def apply_config(args: argparse.Namespace, *, require_collection: bool = True) -> None:
-    values = resolve_config(args.config, vars(args), require_collection=require_collection)
+def apply_config(args: argparse.Namespace, *, require_collection: bool = True, require_source: bool = True) -> None:
+    values = resolve_config(args.config, vars(args), require_collection=require_collection, require_source=require_source)
     for key, value in values.items():
         setattr(args, key, value)
 
