@@ -136,3 +136,10 @@ test("serializes Anki headers and exactly three tab-separated columns", () => {
   assert.equal(lines[4], "alpha    beta\tline one line two\tZotero2Anki 生词/单词");
   assert.equal(tsv.endsWith("\n"), true);
 });
+
+test("legacy Front escapes HTML exactly once and matches old escaped words", () => {
+  assert.equal(core.makeDedupeKey("&lt;word&gt;"), core.makeDedupeKey("<word>"));
+  const rendered = core.serializeTSV([{front: "&lt;word&gt;", back: "meaning", tags: []}]);
+  assert.ok(rendered.includes("&lt;word&gt;"));
+  assert.ok(!rendered.includes("&amp;lt;"));
+});

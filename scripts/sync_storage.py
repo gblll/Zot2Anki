@@ -12,6 +12,10 @@ class StorageError(RuntimeError):
     pass
 
 
+class CommittedError(StorageError):
+    committed = True
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as stream:
@@ -126,7 +130,10 @@ def commit_candidate(original: Path, candidate: Path, expected: dict, running_ap
     # Candidate is prepared on the original filesystem. Windows also refuses
     # replacement when an application holds a non-sharing database handle.
     os.replace(candidate, original)
-    return fingerprint(original)
+    try:
+        return fingerprint(original)
+    except OSError as exc:
+        raise CommittedError('数据库已替换，但无法读取提交后指纹；请检查运行日志') from exc
 
 
 def publish_file(staged: Path, final: Path) -> None:

@@ -318,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         # A journal write can fail immediately after replacement. The candidate
         # hash makes the commit detectable without guessing or syncing twice.
+        if getattr(exc, 'committed', False):
+            state.update(committed=True, stage='committed')
         if state.get('stage') in ('committing', 'committed', 'finalizing'):
             try:
                 if sync_storage.fingerprint(collection_path) == state.get('candidate_fingerprint'):

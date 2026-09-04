@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
+import unicodedata
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -98,7 +99,9 @@ def _resolve_attachment_path(data_dir: Path, attachment_key: str, stored_path: s
     if not stored_path:
         return None
     if stored_path.startswith("storage:"):
-        return data_dir / "storage" / attachment_key / stored_path.removeprefix("storage:")
+        root = (data_dir / 'storage' / attachment_key).resolve()
+        candidate = (root / stored_path.removeprefix('storage:')).resolve()
+        return candidate if candidate.is_relative_to(root) else None
     candidate = Path(stored_path)
     if candidate.is_absolute():
         return candidate
@@ -171,6 +174,9 @@ def load_source_contexts(
             try:
                 position = json.loads(row[5] or "{}")
                 rects = tuple(tuple(float(value) for value in rect) for rect in position.get("rects", ()))
+                import math
+                if any(len(rect) != 4 or not all(math.isfinite(value) for value in rect) for rect in rects):
+                    raise ValueError('Invalid annotation rectangle')
                 page_index = int(position.get("pageIndex", -1))
             except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
                 rects = ()
@@ -241,28 +247,23 @@ def _normalized_with_map(value: str) -> tuple[str, list[int]]:
             if match:
                 index += len(match.group(0))
                 continue
-        folded = char.casefold()
+        folded = unicodedata.normalize('NFKC', char).casefold()
         for folded_char in folded:
-            if folded_char.isalnum():
-                normalized.append(folded_char)
-                positions.append(index)
+            normalized.append(folded_char)
+            positions.append(index)
         index += 1
     return "".join(normalized), positions
 
 
 def find_term_span(text: str, term: str) -> tuple[int, int] | None:
     normalized_text, positions = _normalized_with_map(text)
-    normalized_term, _ = _normalized_with_map(term)
+    normalized_term, _ = _normalized_with_map(html.unescape(term))
     if not normalized_term:
         return None
-    offset = 0
-    while (start := normalized_text.find(normalized_term, offset)) >= 0:
-        end = start + len(normalized_term) - 1
-        left, right = positions[start], positions[end] + 1
-        if ((left == 0 or not (text[left - 1].isalnum() or text[left - 1] == '_')) and
-                (right == len(text) or not (text[right].isalnum() or text[right] == '_'))):
-            return left, right
-        offset = start + 1
+    pattern = r'(?<!\w)' + r'\s+'.join(re.escape(part) for part in normalized_term.split()) + r'(?!\w)'
+    match = re.search(pattern, normalized_text)
+    if match:
+        return positions[match.start()], positions[match.end() - 1] + 1
     return None
 
 
@@ -543,7 +544,7 @@ class AcademicExampleClient:
         for provider in (self._crossref, self._europe_pmc):
             try:
                 result = provider(term)
-            except (OSError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            except (OSError, TimeoutError, ValueError, TypeError, AttributeError) as exc:
                 errors.append(f"{provider.__name__}:{type(exc).__name__}: {exc}")
                 continue
             if result is not None:

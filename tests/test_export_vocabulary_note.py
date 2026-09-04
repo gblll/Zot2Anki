@@ -185,8 +185,10 @@ class ExampleFallbackTests(unittest.TestCase):
             patch.object(exporter, "PdfExampleExtractor", FakeExtractor),
             patch.object(exporter, "AcademicExampleClient", FakeOnline),
         ):
+            connection = sqlite3.connect(":memory:")
+            self.addCleanup(connection.close)
             stats = exporter.enrich_records_with_examples(
-                sqlite3.connect(":memory:"),
+                connection,
                 [record],
                 Path("."),
                 cache_path=Path("cache.json"),

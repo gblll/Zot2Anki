@@ -88,7 +88,7 @@ class SourceAssociationTests(unittest.TestCase):
             self.assertEqual(context.rects, ((10.0, 20.0, 30.0, 40.0),))
             self.assertEqual(context.item_title, "Paper title")
             self.assertEqual(context.doi, "10.1/test")
-            self.assertEqual(context.attachment_path, Path(directory) / "storage" / "ATTKEY" / "paper.pdf")
+            self.assertEqual(context.attachment_path, (Path(directory) / "storage" / "ATTKEY" / "paper.pdf").resolve())
         connection.close()
 
 

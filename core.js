@@ -18,8 +18,18 @@ var Zot2AnkiCore = (() => {
     return asString(value).normalize("NFKC");
   }
 
+  function decodeFront(value) {
+    const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+    const decoded = asString(value).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/giu, (whole, key) => {
+      if (key[0] !== "#") return entities[key.toLowerCase()];
+      const number = key[1].toLowerCase() === "x" ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+      return number > 0 && number <= 0x10ffff ? String.fromCodePoint(number) : whole;
+    });
+    return decoded;
+  }
+
   function normalizeFront(value) {
-    return normalizeUnicode(value).trim().replace(/\s+/gu, " ");
+    return normalizeUnicode(decodeFront(value)).trim().replace(/\s+/gu, " ");
   }
 
   function makeDedupeKey(value) {
@@ -216,7 +226,7 @@ var Zot2AnkiCore = (() => {
 
   function serializeTSV(cards) {
     const rows = (cards || []).map((card) => [
-      sanitizeTSVCell(escapeHTML(card.front)),
+      sanitizeTSVCell(escapeHTML(decodeFront(card.front))),
       sanitizeTSVCell(card.back),
       sanitizeTSVCell((card.tags || []).join(" "))
     ].join("\t"));

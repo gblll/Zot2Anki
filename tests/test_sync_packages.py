@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+import json
 import tempfile
 import unittest
 import zipfile
@@ -99,3 +100,63 @@ class PackageTests(unittest.TestCase):
         fields = packages.share_fields(item)
         self.assertIn('Public paper', fields[3])
         self.assertNotIn('zotero://', ''.join(fields))
+
+    def test_validator_rejects_hidden_notes_metadata_media_and_raw_schedule(self):
+        source = self.root / 'clean.apkg'
+        packages.build_clean(self.Collection, [card('word', 'A')], source)
+        with zipfile.ZipFile(source) as z:
+            base = {name: z.read(name) for name in z.namelist()}
+        mutations = [
+            "update notes set tags=' private_tag '",
+            "update cards set queue=2,reps=5,ivl=12",
+            "update col set conf='{\"private_setting\":\"secret\"}'",
+            "update notes set sfld='secret side channel'",
+            "create table secrets(value); insert into secrets values('secret')",
+            "insert into notes select id+1,'private-guid',mid,mod,usn,tags,flds,sfld,csum,flags,data from notes",
+        ]
+        for index, sql in enumerate(mutations):
+            with self.subTest(sql=sql):
+                raw = self.root / f'attack-{index}.sqlite'
+                raw.write_bytes(base['collection.anki21'])
+                db = sqlite3.connect(raw)
+                try:
+                    db.executescript(sql)
+                    db.commit()
+                finally:
+                    db.close()
+                attack = self.root / f'attack-{index}.apkg'
+                with zipfile.ZipFile(attack, 'w') as z:
+                    for name, data in base.items():
+                        z.writestr(name, raw.read_bytes() if name == 'collection.anki21' else data)
+                with self.assertRaises(packages.StorageError):
+                    packages.validate_package(attack, clean=True)
+        attack = self.root / 'media-attack.apkg'
+        with zipfile.ZipFile(attack, 'w') as z:
+            for name, data in base.items():
+                z.writestr(name, b'{"0":"private.png"}' if name == 'media' else data)
+            z.writestr('0', b'private media')
+        with self.assertRaises(packages.StorageError):
+            packages.validate_package(attack, clean=True)
+
+    def test_validator_checks_unused_model_and_deck_metadata(self):
+        source = self.root / 'clean.apkg'
+        packages.build_clean(self.Collection, [card('word', 'A')], source)
+        with zipfile.ZipFile(source) as z:
+            base = {name: z.read(name) for name in z.namelist()}
+        for column in ('models', 'decks'):
+            raw = self.root / (column + '.sqlite')
+            raw.write_bytes(base['collection.anki21'])
+            db = sqlite3.connect(raw)
+            try:
+                value = json.loads(db.execute('select ' + column + ' from col').fetchone()[0])
+                next(iter(value.values()))['private_metadata'] = 'secret'
+                db.execute('update col set ' + column + '=?', (json.dumps(value),))
+                db.commit()
+            finally:
+                db.close()
+            attack = self.root / (column + '.apkg')
+            with zipfile.ZipFile(attack, 'w') as z:
+                for name, data in base.items():
+                    z.writestr(name, raw.read_bytes() if name == 'collection.anki2' else data)
+            with self.assertRaises(packages.StorageError):
+                packages.validate_package(attack, clean=True)

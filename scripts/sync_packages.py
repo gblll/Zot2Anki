@@ -27,6 +27,24 @@ SHARE_DECK = 'Zot2Anki Shared Vocabulary'
 SHARE_FRONT = '{{Word}}<br>{{Symbol}}{{tts en_US:Word}}'
 SHARE_BACK = '{{FrontSide}}<hr>{{Chn}}<hr>{{Example}}<br>{{Source}}'
 SHARE_CSS = '.card { font-family: sans-serif; font-size: 22px; text-align: left; }'
+SHARE_MODEL_ID = 1760000000001
+SHARE_DECK_ID = 1760000000002
+
+
+def share_model():
+    return {'id': SHARE_MODEL_ID, 'name': SHARE_MODEL, 'type': 0, 'mod': 0, 'usn': 0, 'sortf': 0, 'did': None,
+            'css': SHARE_CSS, 'latexPre': '', 'latexPost': '', 'latexsvg': False, 'req': [[0, 'any', [0, 1]]],
+            'tmpls': [{'name': 'Vocabulary', 'ord': 0, 'qfmt': SHARE_FRONT, 'afmt': SHARE_BACK,
+                       'bqfmt': '', 'bafmt': '', 'did': None, 'bfont': '', 'bsize': 0, 'id': 1}],
+            'flds': [{'name': name, 'ord': index, 'sticky': False, 'rtl': False, 'font': 'Arial', 'size': 20,
+                      'description': '', 'id': index + 1} for index, name in enumerate(FIELDS)]}
+
+
+def share_decks():
+    return {str(did): {'id': did, 'name': name, 'mod': 0, 'usn': 0, 'desc': '', 'dyn': 0, 'conf': 1,
+                      'lrnToday': [0, 0], 'revToday': [0, 0], 'newToday': [0, 0], 'timeToday': [0, 0],
+                      'collapsed': True, 'browserCollapsed': True, 'extendNew': 0, 'extendRev': 0}
+            for did, name in [(1, 'Default'), (SHARE_DECK_ID, SHARE_DECK)]}
 # Anki requires config 1 even for a new-card package. This fixed default contains
 # no profile preferences, learned FSRS parameters, search text or review state.
 SHARE_DCONF = {'1': {'id': 1, 'name': 'Default', 'mod': 0, 'usn': 0, 'maxTaken': 60,
@@ -100,6 +118,9 @@ def _rewrite_package(path, *, clean=False):
         if clean:
             with closing(sqlite3.connect(database)) as db:
                 db.execute("update col set conf='{}',dconf=?,tags='{}',crt=0,mod=0,scm=0,ls=0,usn=0", (json.dumps(SHARE_DCONF),))
+                db.execute('update col set models=?,decks=?', (json.dumps({str(SHARE_MODEL_ID): share_model()}), json.dumps(share_decks())))
+                db.execute('update notes set mid=?', (SHARE_MODEL_ID,))
+                db.execute('update cards set did=?', (SHARE_DECK_ID,))
                 db.execute("update notes set mod=0,usn=0,tags='',flags=0,data=''")
                 db.execute("update cards set mod=0,usn=0,type=0,queue=0,due=0,ivl=0,factor=0,reps=0,lapses=0,left=0,odue=0,odid=0,flags=0,data=''")
                 db.execute('delete from revlog')
@@ -119,12 +140,18 @@ def export_personal(collection, note_ids, path):
     from anki.collection import NoteIdsLimit
     if path.exists() or not note_ids:
         raise StorageError('personal 输出路径已存在或笔记集合为空')
+    placeholders = ','.join('?' for _ in note_ids)
+    expected = {
+        'notes': {n.id: (n.guid, n.fields, sorted(n.tags)) for n in (collection.get_note(nid) for nid in note_ids)},
+        'cards': collection.db.all(f'select id,nid,ord,type,queue,due,ivl,factor,reps,lapses,left,odue,odid,flags from cards where nid in ({placeholders}) order by id', *note_ids),
+        'revlog': collection.db.all(f'select * from revlog where cid in (select id from cards where nid in ({placeholders})) order by id', *note_ids),
+    }
     collection.export_anki_package(
         out_path=str(path),
         options=ExportAnkiPackageOptions(with_scheduling=True, with_deck_configs=True, with_media=True, legacy=True),
         limit=NoteIdsLimit(note_ids=list(note_ids)))
     _rewrite_package(path)
-    return validate_package(path, expected_note_ids=set(note_ids))
+    return validate_package(path, expected_note_ids=set(note_ids), expected_personal=expected)
 
 
 def build_clean(Collection, cards, path):
@@ -162,7 +189,7 @@ def build_clean(Collection, cards, path):
     return result
 
 
-def validate_package(path, *, clean=False, expected_note_ids=None, expected_fields=None):
+def validate_package(path, *, clean=False, expected_note_ids=None, expected_fields=None, expected_personal=None):
     """Inspect every physical DB and every media entry, before any importer runs."""
     with zipfile.ZipFile(path) as package, tempfile.TemporaryDirectory() as root:
         names = package.namelist()
@@ -185,6 +212,14 @@ def validate_package(path, *, clean=False, expected_note_ids=None, expected_fiel
                 notes = db.execute('select * from notes').fetchall()
                 cards = db.execute('select * from cards').fetchall()
                 nids = {n['id'] for n in notes}
+                if expected_personal is not None:
+                    actual_notes = {n['id']: (n['guid'], n['flds'].split('\x1f'), sorted(n['tags'].split())) for n in notes}
+                    actual_cards = db.execute('select id,nid,ord,type,queue,due,ivl,factor,reps,lapses,left,odue,odid,flags from cards order by id').fetchall()
+                    actual_revlog = db.execute('select * from revlog order by id').fetchall()
+                    if (actual_notes != expected_personal['notes'] or
+                            [list(r) for r in actual_cards] != [list(r) for r in expected_personal['cards']] or
+                            [list(r) for r in actual_revlog] != [list(r) for r in expected_personal['revlog']]):
+                        raise StorageError('personal 笔记、卡片身份或复习记录与允许集合不一致')
                 if expected_note_ids is not None and nids != set(expected_note_ids):
                     raise StorageError('APKG 含不在允许名单中的笔记或缺失笔记')
                 if any(c['nid'] not in nids for c in cards) or {c['nid'] for c in cards} != nids:
@@ -194,6 +229,11 @@ def validate_package(path, *, clean=False, expected_note_ids=None, expected_fiel
                 if any(str(n['mid']) not in models for n in notes) or any(str(c['did']) not in decks for c in cards):
                     raise StorageError('APKG 类型/牌组引用非法')
                 if clean:
+                    allowed_tables = {'col', 'notes', 'cards', 'revlog', 'graves', 'sqlite_stat1', 'sqlite_stat4'}
+                    if set(r[0] for r in db.execute("select name from sqlite_master where type='table'")) - allowed_tables:
+                        raise StorageError('clean 含额外数据表')
+                    if models != {str(SHARE_MODEL_ID): share_model()} or decks != share_decks():
+                        raise StorageError('clean 类型或牌组元数据不符合允许名单')
                     if len(models) != 1 or next(iter(models.values()))['name'] != SHARE_MODEL:
                         raise StorageError('clean 包含私人笔记类型')
                     model = next(iter(models.values()))
@@ -215,6 +255,8 @@ def validate_package(path, *, clean=False, expected_note_ids=None, expected_fiel
                             raise StorageError('clean GUID 不稳定或重复')
                         if re.search(r'zotero://|\[sound:|<(?:img|audio|video|script|iframe)\b', note['flds'], re.I):
                             raise StorageError('clean 含内部链接或媒体')
+                        if str(note['sfld']) != html.unescape(fields[0]) or note['flags'] or note['mod'] or note['usn']:
+                            raise StorageError('clean 笔记元数据不符合允许名单')
                         actual[note['guid']] = fields
                     if expected_fields is not None and actual != expected_fields:
                         raise StorageError('clean 学习内容未通过允许名单')

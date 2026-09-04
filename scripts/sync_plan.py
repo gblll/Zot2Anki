@@ -33,7 +33,7 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) ->
     owned = deepcopy(ledger['notes']) if ledger else {}
     if not set(map(int, owned)).issubset(all_ids):
         raise PlanError('托管笔记已被删除或更换类型；请恢复后重试，不能猜测归属')
-    incoming = [identities_from_html(card.source_html) for card in cards]
+    incoming = [identities_from_html(card.source_html, require_all=True) for card in cards]
     conflicts = []
     by_source = {}
     for index, (card, sources) in enumerate(zip(cards, incoming)):
@@ -49,7 +49,7 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) ->
         # A tag alone is insufficient: legacy links must exactly identify a
         # unique current card. Unknown history is explicitly left unowned.
         for nid, note in notes.items():
-            sources = identities_from_html(note['Source']) if 'Source' in note else []
+            sources = identities_from_html(note['Source'], require_all=True) if 'Source' in note else []
             candidates = [i for i, values in enumerate(incoming) if sources and set(values) == set(sources)]
             if 'Zotero2Anki' in note.tags and len(candidates) == 1:
                 owned[str(nid)] = {'sources': sources, 'word': word_identity(note['Word'])}
@@ -66,6 +66,9 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) ->
         for source in entry['sources']:
             source_owners.setdefault(source, set()).add(nid)
         word_owners.setdefault(word_identity(notes[nid]['Word']), set()).add(nid)
+    for source, owners in source_owners.items():
+        if len(owners) > 1:
+            conflicts.append({'source': source, 'notes': sorted(owners), 'reason': 'duplicate_owned_identity'})
     matches = []
     used = {}
     for index, (card, sources) in enumerate(zip(cards, incoming)):

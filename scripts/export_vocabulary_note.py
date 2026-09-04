@@ -14,6 +14,7 @@ import re
 import sqlite3
 import sys
 import unicodedata
+import uuid
 
 try:
     from scripts import local_config
@@ -711,11 +712,16 @@ def serialize_review_tsv(cards: list[Card]) -> str:
 
 def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = None) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    stamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M")
+    stamp = timestamp or (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:12])
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', stamp):
+        raise ExportError('输出运行标识含非法字符')
     vocabulary_path = output_dir / f"zot2anki-vocabulary-{stamp}.tsv"
     review_path = output_dir / f"zot2anki-vocabulary-{stamp}.review.tsv"
-    vocabulary_path.write_text(serialize_anki_tsv(cards), encoding="utf-8", newline="")
-    review_path.write_text(serialize_review_tsv(cards), encoding="utf-8", newline="")
+    if vocabulary_path.exists() or review_path.exists():
+        raise ExportError('输出文件已存在，禁止覆盖')
+    for path, value in ((vocabulary_path, serialize_anki_tsv(cards)), (review_path, serialize_review_tsv(cards))):
+        with path.open('x', encoding='utf-8', newline='') as stream:
+            stream.write(value)
     return vocabulary_path, review_path
 
 

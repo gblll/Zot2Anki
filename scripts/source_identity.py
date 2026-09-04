@@ -29,9 +29,11 @@ class _Links(HTMLParser):
             self.hrefs.extend(value or '' for key, value in attrs if key == 'href')
 
 
-def identities_from_html(value: str) -> list[str]:
+def identities_from_html(value: str, *, require_all=False) -> list[str]:
     parser = _Links()
     parser.feed(value or '')
+    if require_all and any(not source_identity(href) for href in parser.hrefs):
+        return []
     return list(dict.fromkeys(identity for href in parser.hrefs if (identity := source_identity(href))))
 
 
