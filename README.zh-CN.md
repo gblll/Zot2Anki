@@ -2,110 +2,86 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-将已整理在 Zotero Note 中的生词同步到 Anki。核心目标很简单：新增生词创建新卡，修改生词更新原卡，同时保留复习记录和个人笔记。
+**v0.2.0-rc.1：私有 Windows 预发布候选版。** 将一篇 Zotero 生词 Note 同步到 Anki，并保留卡片身份、个人 Notes 和复习历史。当前不是稳定版或公开发行版。
 
-> 当前是开发版本，不是稳定发行版。已知问题包括合并词条拆分后的更新冲突、同步失败后可能已保存部分修改，以及分享包过滤不完整。请先阅读[已知问题](KNOWN_ISSUES.md)，在独立 Anki 配置中测试并保留备份。名为 `clean.apkg` 的文件也**不能保证可以安全分享**。
+## 安装
 
-## 工具做什么
+验证基线为 **Windows x64、Python 3.13、Anki 26.5、PyMuPDF 1.28.2**。请先安装 Python 和 Anki；发行包不包含这些运行时。环境不匹配时，会在打开个人数据库前退出。
 
-- 按精确标题读取一篇 Zotero Note，不修改 Zotero。
-- 将单词、音标、释义和批注链接整理为固定格式的 Anki 卡片。
-- 优先按 Zotero 批注标识匹配原笔记，再按规范化单词查找。
-- 在普通一对一更新中修改受管理字段，保留个人 `Notes` 和已有复习数据。
-- 对 Zotero 中消失的词条添加 `MissingFromZotero` 标签，不从主数据库自动删除。
-
-Zotero 管理生词内容，Anki 管理复习进度和个人 `Notes`。在 Anki 中修改受同步管理的字段，下次同步时可能被覆盖。
-
-PDF 例句提取、可选联网例句和 APKG 导出属于附加功能。旧 Zotero 插件源码保留，但目前主要使用本地脚本。
-
-## 首次准备
-
-启动器面向 Windows。需要 Zotero、Anki 桌面版，以及与 Anki 自带 Python 包兼容的 Python。集成流程已在 Python 3.13、Anki 26.5 下测试，其他组合需要验证；源码语法要求 Python 3.10 或更新版本。
-
-在项目文件夹内运行：
+将 ZIP 解压到可写的本地目录，支持中文和空格路径。在解压目录执行：
 
 ```powershell
-python -m pip install -r requirements.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1
 Copy-Item config.example.json config.local.json
 ```
 
-只在首次设置时复制示例；不要覆盖已经填写好的本地配置。
+仅首次安装时复制示例，升级时保留原有配置。设置脚本创建项目 `.venv`，核对 SHA256 后安装固定版本 PDF 依赖，并通过临时 collection 检查 Anki 后端。非标准安装可传 `-Python <Python可执行文件>` 和 `-AnkiPackages <app_packages目录>`。安装依赖需要联网，日常同步默认离线。
 
-## 本地私有配置
+## 本地配置
 
-在自己电脑上编辑 `config.local.json`。它已被 Git 忽略，不应上传。
+编辑被 Git 忽略的 `config.local.json`。`note_title` 必须是唯一、完全匹配的 Zotero Note 标题；设置 `anki_profile` 或明确的 `collection`，不会自动选择用户配置。
 
 | 配置项 | 含义 |
 | --- | --- |
-| `database` | Zotero 数据库。示例为 `~/Zotero/zotero.sqlite`；数据目录不同时请修改。 |
-| `note_title` | 生词 Note 的完整标题，必须精确一致。`Vocabulary` 只是示例。 |
-| `anki_profile` | Anki 配置文件夹名称。程序不会自动选择某个账户。 |
-| `collection` | 可选：直接填写 `collection.anki2` 路径，代替配置名称。 |
-| `anki_packages`、`anki_exe` | 标准 Windows 用户安装可留空；自定义安装时填写。 |
-| `output_dir` | 建议保留 `dist`，以使用现有隐私排除规则。 |
-| `no_online` | 默认 `true`，不联网查询例句。只有愿意把生词搜索词发送给外部服务时才改为 `false`。 |
-| `review_annotation_keys` | 可选：需要人工复核的批注标识列表，只保存在本地。 |
+| `database` | Zotero SQLite 文件，默认当前用户的 Zotero 目录。 |
+| `note_title` | 生词 Note 的准确标题。 |
+| `anki_profile`、`anki_root` | Anki 配置目录名称和可选自定义根目录。 |
+| `collection` | 明确指定 collection；优先于 JSON 中的配置名称。 |
+| `anki_packages`、`anki_exe` | 自定义 Anki 安装位置；留空使用当前用户默认位置。 |
+| `output_dir` | 建议保留 `dist`；仓库内未被 Git 忽略的输出目录会被拒绝。 |
+| `no_online` | 默认 `true`。改为 `false` 后，缺少本地完整例句时可将生词搜索词发送给 Crossref / Europe PMC。 |
+| `review_annotation_keys` | 需要人工复核的本地 annotation 标识。 |
 
-Anki 配置根目录从当前 Windows 用户的应用数据目录推导；非标准位置可以设置 `anki_root`。JSON 路径支持正斜杠、`~` 和环境变量，相对路径以配置文件所在目录为起点。`collection` 与 `anki_profile` 同时填写时，以 `collection` 为准。命令行参数优先于本地配置。
+优先级为命令行、JSON、默认值。JSON 相对路径从配置文件所在目录解析，命令行相对路径从当前工作目录解析。命令行指定配置名称或根目录时，会替代 JSON 中的 collection，除非同时明确传入命令行 collection。真实路径、笔记名称、数据库、报告和 APKG 不应上传 Git。
 
-PowerShell 与 Python 共用同一套配置解析逻辑。真实路径、账户名称、笔记标题和批注标识应留在本地配置，不写进源码或说明文档。
+## 日常使用
 
-## 日常同步
-
-保存 Zotero 中的修改，然后**手动完全退出 Zotero 和 Anki**。双击 `Syne_Zot2Anki.cmd`，或运行：
+保存编辑，**自行正常退出 Zotero 和 Anki**。脚本不会强制关闭应用。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync_vocabulary.ps1
+.\Syne_Zot2Anki.cmd -Check
+.\Syne_Zot2Anki.cmd -DryRun
+.\Syne_Zot2Anki.cmd
 ```
 
-启动器检查环境、备份数据库、同步生词、导出文件并写入报告。只有成功后才重新打开 Anki；失败时窗口保留错误摘要。程序不会强制关闭 Zotero 或 Anki。
+`-Check` 仅检查环境。`-DryRun` 生成匹配计划和本地报告，不提交到 Anki。正常同步先制作一致性备份，完成全部匹配计划，再在候选数据库中更新和验证；最后检查原库与应用状态并原子替换。重复运行锁、未合并 WAL、应用重新启动、原库变化、身份冲突和来源格式损坏都会阻止提交。
 
-可选：安装桌面快捷方式。
+成功报告明确显示更新的 collection。只有能根据配置根目录准确确定配置名称时，启动器才用该名称打开 Anki；自定义 collection 路径只显示结果位置。使用 `-NoOpenAnki` 可禁止自动打开。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_desktop_shortcut.ps1
-```
+| PowerShell | Python | 作用 |
+| --- | --- | --- |
+| `-Check` | `--check` | 只检查环境。 |
+| `-DryRun` | `--dry-run` | 只生成匹配计划，不提交数据库。 |
+| `-AllowLargeRemoval` | `--allow-large-removal` | 仅解除大量缺失的数量保护。 |
+| `-RefreshExamples` | `--refresh-examples` | 联网已启用时，跳过缓存重新查询。 |
+| `-NoOnline` | `--no-online` | 强制本次离线。 |
+| `-Recover <报告>` | `--recover <报告>` | 仅整理已经提交的运行产物。 |
 
-快捷方式名称是 **Syne_Zot2Anki**。目标位置根据本机项目目录自动设置，快捷方式本身不进入版本管理；项目可以放在任意文件夹。
+直接调用使用 `.venv/Scripts/python.exe scripts/sync_vocabulary.py`，Python 入口本身不会打开 Anki。单独导出 TSV 的入口仍为 `scripts/export_vocabulary_note.py`。完整同步在离线状态也需要 PDF 依赖。可通过 `scripts/install_desktop_shortcut.ps1` 创建桌面快捷方式。
 
-进阶入口：
+## 匹配与产物
 
-```powershell
-python scripts/sync_vocabulary.py --help
-python scripts/export_vocabulary_note.py --help
-python scripts/export_vocabulary_note.py --no-examples --no-online
-```
+RC 每个 collection 只绑定一篇 Zotero Note。来源身份包含资料库或群组、附件及 annotation；单词回退只用于已托管笔记。拆分、合并和其他归属冲突会停止整次同步。首次迁移只接管带原同步标签、完整来源链接能唯一对应当前输入的旧笔记。归属不明项目列入报告，私人同类型笔记不更新、不标记缺失；会影响它们的共享模板迁移也会被拒绝。
 
-仅导出命令只生成 TSV，不打开或修改 Anki。Python 同步入口不会重新打开 Anki。完整同步即使关闭联网查询，仍需要 PDF 提取依赖。
+个人牌组、笔记类型、同步标签及七个字段继续使用原有 `Zotero2Anki` 身份。缺失条目只加标签，不从个人库删除。当缺失数达到 `max(5, ceil(原托管数量 × 20%))` 时默认停止。
 
-## 卡片和输出
+每次运行使用时间加随机标识，禁止覆盖现有产物：
 
-牌组和笔记类型名称：`Zotero2Anki Vocabulary`。
+- 生词 TSV 与待复核 TSV。
+- **personal.apkg**：仅包含本次来源的托管笔记 ID，包括缺失词条、个人 Notes、标签、复习历史和必要媒体，必须按私人文件保存。
+- **clean.apkg**：从空数据库构建，只保留当前有效词条，使用独立分享笔记类型和稳定分享 GUID。清除 Notes、私人标签、调度、复习日志、Zotero 链接与标识；只支持文本和内置 TTS，不包含私人媒体。未经公开元数据核验的本地题名和例句会被省略；经过公开服务核验的例句保留出处。这项检查不判断学习文本是否适合公开或是否拥有相应分享权利。
+- 一致性备份与私人 JSON 运行日志，记录阶段、提交状态、来源绑定、匹配、排除项目、指纹、隐私校验和恢复信息。
 
-项目现已更名为 **Zot2Anki**。为继续识别原有卡片，Anki 牌组、笔记类型及同步标签保留原有名称；此次项目改名不会迁移 Anki 数据或另建一套卡片。
+分享前请检查 clean 中的学习内容。不要分享 personal、备份、TSV、缓存或本地报告。详见[操作与恢复](IMPLEMENTATION_GUIDE.md)、[已知限制](KNOWN_ISSUES.md)、[变更记录](CHANGELOG.md)和[第三方声明](THIRD_PARTY_NOTICES.md)。
 
-字段为 `Word`、`Symbol`、`Chn`、`Example`、`Source`、`ZoteroKeys`、`Notes`；只有 `Notes` 专供个人编辑。模板保存在 `anki-template/`。
-
-本地 `dist/` 中会生成生词 TSV、复核 TSV、同步报告、数据库备份、日志、例句缓存及两种 APKG。报告和日志可能包含本机路径、来源信息。
-
-- `personal.apkg` 包含学习进度和个人笔记，应当视为私有文件。
-- `clean.apkg` 的目标是去掉进度和个人笔记，但过滤仍有已知遗漏，未经单独隐私检查不要公开分享。
-- 即使没有个人笔记，导出文件仍可能包含生词、文献题名、DOI 链接和 Zotero 标识，不等于匿名数据。
-
-`.gitignore` 排除了生成文件、数据库、备份、PDF、快捷方式和本地配置。忽略文件不会删除它，也不会清除旧提交中的内容；不要强制添加私有文件。若修改输出目录，请放在仓库外，或在运行前添加相应忽略规则。
-
-## 测试与说明
+## 验证与发行状态
 
 ```powershell
-python -m unittest discover -s tests -p "test_*.py" -v
-python tests/integration_anki.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
 node --test tests/core.test.js
+.\.venv\Scripts\python.exe tests/integration_anki.py
 ```
 
-Anki 集成测试在临时数据库中使用虚构数据，不同步真实生词或修改现有数据库。现有测试尚未覆盖所有同步边界；仓库隐私测试只是基本检查，不能替代全面的秘密信息扫描。
+Windows CI 仅使用合成 Zotero、PDF 和 Anki 资料，直接检查 APKG 内数据库，并在含中文和空格的全新目录安装允许名单发行包。真实资料仅在一致性副本上验收。旧 Zotero 插件保留源码与纯函数测试；不附 XPI，不承诺插件实机兼容。
 
-- [实施与操作说明（英文）](IMPLEMENTATION_GUIDE.md)
-- [已知问题](KNOWN_ISSUES.md)
-- [旧插件手动测试](tests/MANUAL-INTEGRATION.md)
-
-目前尚未选择开源许可证。卡片模板为自行制作；其中使用的第三方组件需在公开发行前单独核对授权。
+尚未选择项目开源许可证。GitHub 上可访问的旧孤立对象仍是**公开发行门禁**。本次仓库保持私有，只准备 Draft Pre-release，不合并 main、不点击发布。

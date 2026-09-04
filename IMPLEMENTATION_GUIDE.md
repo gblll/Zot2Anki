@@ -1,106 +1,86 @@
-# Implementation and operations guide
+# Operations and recovery / 操作与恢复
 
-[English overview](README.md) | [中文概览](README.zh-CN.md) | [Known issues](KNOWN_ISSUES.md)
+The RC entry point is `Syne_Zot2Anki.cmd`, backed by the project's `.venv`. See the bilingual README for installation and configuration.
 
-## Scope
+## Source format / 来源格式
 
-This experimental local tool reads vocabulary organized in a Zotero Note and updates an Anki collection. It is not a background service. Identity conflicts and partial-write failures remain unresolved. Start with a dedicated test profile and synthetic vocabulary.
-
-## Configuration
-
-Copy `config.example.json` to `config.local.json` once. Set the exact Note title and either the Anki profile folder name or an explicit collection path. No profile is chosen automatically. See the README for each setting.
-
-PowerShell and Python share `scripts/local_config.py`. Precedence is command-line options, private JSON, then generic current-user defaults. Relative JSON paths start at the configuration file's folder; relative command-line paths start at the shell's working directory. Empty optional strings use defaults; unknown keys and invalid types are rejected.
-
-To inspect resolved settings without running a sync:
-
-```powershell
-python scripts/local_config.py
-```
-
-This prints private paths. Do not post the output publicly without redacting it.
-
-For a separate test configuration, create `testing.local.json` (also ignored):
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync_vocabulary.ps1 -Config testing.local.json
-python scripts/sync_vocabulary.py --config testing.local.json
-```
-
-PowerShell accepts `-Database`, `-NoteTitle`, `-Collection`, `-AnkiProfile`, `-AnkiRoot`, `-AnkiPackages`, `-AnkiExe`, `-OutputDir`, and `-NoOnline`. An explicit profile/root overrides a stored collection unless `-Collection` is also provided. Python options are listed by `--help`.
-
-## Expected Note format
-
-Each vocabulary paragraph contains an annotation link whose text is the word or phrase, followed by its definition, normally in a code element. Synthetic example:
+Use one vocabulary entry per paragraph, one complete Zotero annotation link, then a definition. Synthetic example:
 
 ```html
 <p><a href="zotero://open-pdf/library/items/TESTITEM?page=1&amp;annotation=TESTKEY">sample</a>: <code>🔉 英 [ˈsɑːmpəl] n. 示例</code></p>
 ```
 
-The identifiers above are placeholders. Use real Zotero-generated links in your private Note. The parser normalizes words and combines duplicates. Missing definitions and unusual formatting are retained where possible and flagged for review. Private annotation-specific review rules belong in `review_annotation_keys`, not public source or fixtures.
+Group sources use `zotero://open-pdf/groups/<group-id>/items/<attachment-key>?annotation=<annotation-key>`. The identifiers above are placeholders. Library/group, attachment and annotation must resolve together in Zotero and must not be deleted. Definitions without recognized pronunciation are retained with a review flag; broken source identities cannot enter synchronization. Empty paragraphs are ignored; an initial plain paragraph matching the Note title is allowed. Other non-vocabulary text paragraphs are rejected in strict sync, because a lost source link cannot safely be distinguished from an intentional comment.
 
-## Daily operation and shortcuts
+生词使用一个段落、一条完整来源链接，后接释义。空段落以及首段与 Note 标题一致的普通文字可保留；其他无法识别来源的文字段落会停止同步。解析为空、链接损坏或来源已删除，不能通过 `--allow-large-removal` 绕过。音标格式异常会保留释义并标记待复核。
 
-1. Save your vocabulary edits in Zotero.
-2. Manually close Zotero and Anki completely.
-3. Run `Syne_Zot2Anki.cmd` or the PowerShell entry point.
-4. Review the completion message and generated review TSV.
-5. Check the configured Anki profile after the application opens.
+## Ownership and migration / 归属与迁移
 
-Opening Anki does not itself select a specific profile. The launcher stops if either application is running; it never terminates them automatically. It disables console Quick Edit during the run, saves detailed logs, and verifies the report's run identifier before reopening Anki.
+The collection config key `zot2anki_source_binding_v1` stores the Note binding and managed note IDs with compound source identities. Do not edit this config manually. The RC binds a collection to one Note; a different source requires a separate collection/profile. Renaming the same Note is safe if its item identity is unchanged and the local title setting is updated.
 
-The optional installer creates a generic **Syne_Zot2Anki** shortcut pointing to the local checkout. Recreate it after moving the project. Existing shortcuts are not automatically renamed or removed.
+On first adoption, only notes carrying `Zotero2Anki` with complete source sets uniquely matching an input entry are owned. Same-type private cards remain unowned. Ambiguous legacy matches stop the run; unmatched historical items are listed in `excluded`. If a template change would affect an unowned card, move that private card to a separate note type in Anki before retrying.
 
-## Sync behavior and templates
+来源绑定保存在 collection 内，不依赖文件名或项目名称。首次迁移不依靠单词猜测历史归属。历史项目无法确认归属时列入报告；交叉或重复归属会停止同步。未托管笔记不更新、不标记缺失。请勿通过手改内部绑定或移除冲突检查来解决问题。
 
-The project and launcher are now named Zot2Anki and `Syne_Zot2Anki.cmd`. Persistent Anki deck/note-type names and the sync tag retain their original identifiers. The legacy Zotero add-on ID, preference keys, source CSS classes, and theme-storage fallback also remain stable. These intentional compatibility identifiers are not stale branding and must not be renamed without a tested migration.
+Fields remain `Word`, `Symbol`, `Chn`, `Example`, `Source`, `ZoteroKeys`, `Notes`. Only the first six and managed tags are refreshed. Existing GUIDs, note/card IDs, personal Notes, non-managed tags and scheduling remain in place. Missing entries retain history and return to active status when the same source reappears. Splits/merges require resolving the source structure before retrying; the RC has no automatic identity reassignment.
 
-The script backs up `collection.anki2`, reads Zotero through a read-only SQLite connection, and exports parsed vocabulary. It then updates the `Zotero2Anki Vocabulary` note type and deck, applies vocabulary updates, exports packages, and writes a report.
+## Commit protocol / 提交协议
 
-Fields, in order: `Word`, `Symbol`, `Chn`, `Example`, `Source`, `ZoteroKeys`, `Notes`.
+1. Check the pinned runtime before personal DB access; reject unsafe output locations.
+2. Acquire an OS collection lock and fingerprint the original.
+3. Use SQLite's backup interface, including committed WAL pages, and validate the backup.
+4. Parse valid sources, plan every match/conflict/removal, and check shared-template impact.
+5. Open a candidate beside the original on the same filesystem. Only the candidate receives model migrations, notes and ownership changes.
+6. Export explicit personal note IDs and build clean from a separate empty collection. Validate all physical package DBs and media maps; compare personal IDs, fields and raw review data.
+7. Close and validate the candidate. Require apps closed, no original WAL data and an unchanged original fingerprint, then atomically replace.
+8. Publish already prepared files without overwriting. A durable journal records commit intent, candidate hash, commit result and remaining files.
 
-The migration can add missing fields to an older supported note type while preserving existing identifiers. Unknown extra fields or an unexpected number of templates cause an error. Not every custom note type is supported. Edit the files in `anki-template/` to change the managed template; test in a separate profile before syncing your main collection.
+The OS lock serializes this tool's runs. It does not control other database tools; do not open either application or edit database files during synchronization. Use a local writable filesystem supporting atomic replacement and hard links (the Windows acceptance baseline is NTFS). Network shares, cloud-synced profiles and FAT/exFAT output directories are not validated. Personal media stay in place; only referenced files are copied into the disposable export area.
 
-Annotation identifiers are the preferred match key, normalized words a fallback. Source links can supply missing `ZoteroKeys`. Ordinary one-to-one updates retain personal `Notes`, custom tags, and scheduling; managed fields and tags can change. Missing entries are tagged `MissingFromZotero` instead of being deleted from the main collection.
+运行时不要启动应用或用其他工具改库。锁只约束本工具；提交前会再次检查应用、WAL 和原库指纹。候选库位于原库同一文件系统，个人媒体原位保留。发行基线为本地 NTFS，不支持以网络共享或云同步目录作为验收依据。
 
-There is no complete preflight plan or rollback guarantee. Splitting or merging previously matched entries can create conflicts, and failures may occur after earlier updates have been saved.
+## Failure and recovery / 失败与恢复
 
-## Examples and network privacy
+Reports and backups are private. Keep the report, backup and `.run-<id>` staging folder together. The journal has `stage`, `committed`, `before`, `candidate_fingerprint`, `after`, `plan`, `conflicts`, `excluded`, `privacy`, `artifacts` and `outputs` where available.
 
-The local extractor uses annotation metadata to locate PDF text and keeps at most three deduplicated examples per word. Fragments and scanned PDFs receive review tags; no OCR is performed.
-
-Online lookup is disabled by default. Setting `no_online` to `false` allows fallback queries to Crossref and Europe PMC using vocabulary search terms. These services receive the searched terms. The intended request payload does not upload the Zotero database, full PDFs, or Anki collection. Matching and negative-cache behavior have known limitations.
-
-## Outputs and sharing
-
-Default local outputs under `dist/` include vocabulary and review TSV, a JSON report with statistics/paths/hashes, collection backups, logs, example caches, and personal/clean APKG variants. Treat all of them as potentially private. Collection backups can contain unrelated decks.
-
-The clean-package process clears personal notes only for selected managed notes, then exports by deck; unrelated notes in that deck may survive filtering. Vocabulary, source links, and publication information also remain. Neither APKG variant should be committed or assumed anonymous.
-
-TSV columns are `Word`, `Symbol`, `Chn`, `Example`, `Source`, `ZoteroKeys`, `Tags`. For manual import, use the matching note type, enable HTML, map the first six fields by name and the seventh to tags, and leave `Notes` unmapped. Manual TSV import does not implement the Python sync's identifier-based matching, so it is not an equivalent update path for renamed words.
-
-Test APKG imports in an empty profile. Packages are snapshots, not a substitute for a tested multi-device workflow. Zotero links require the corresponding library on the receiving device; TTS uses that device's voices and does not bundle them.
-
-## Failure and recovery
-
-If a sync fails, do not assume nothing changed or immediately rerun it repeatedly. Keep the log, report if present, and pre-sync backup. Close Anki before inspecting or restoring collection files. Preserve the current state too: reverting to a backup loses changes made after the backup.
-
-Validate a recovery copy in a separate profile before replacing live data. The automatic collection backup is not a complete backup of the Anki profile and media folder; keep independent Anki backups. Automatic rollback and concurrent-run locking still need implementation.
-
-## Validation
+- `failed_before_commit`, `committed: false`: the original was not replaced. Fix the reported cause before starting a new run. An incomplete candidate is not a recovery database.
+- `committing`: a crash may have happened around replacement. Do not assume success or failure. Recovery compares the current DB with the candidate fingerprint.
+- `committed` / `finalizing`: the DB is already updated. **Do not repeat sync just to obtain missing exports.** Close applications and run the recovery command below.
+- `complete`: database and outputs are complete. The report remains as the audit trail.
+- `dry_run`: a match plan only; the database was not committed.
 
 ```powershell
-python -m unittest discover -s tests -p "test_*.py" -v
-python tests/integration_anki.py
-node --test tests/core.test.js
+.\.venv\Scripts\python.exe scripts/sync_vocabulary.py --recover <private-report.json>
 ```
 
-Integration tests use synthetic notes in temporary collections and check ordinary additions, identifier-based updates, retained GUIDs/personal notes/review data, missing-entry tags, and package reimport. They need compatible Anki packages; use `--anki-packages` for a custom location.
+Recovery verifies the committed DB fingerprint and every staged/final artifact hash. Already published matching files are accepted; conflicting files or a subsequently modified DB stop recovery. It never applies the note update plan again. If a journal could not be written after replacement, keep the original `committing` report: its candidate fingerprint can still prove the result. If the DB has since changed, preserve everything and resolve the state manually instead of rerunning blindly.
 
-`tests/validate_apkg.py --report <local-report-file>` can inspect generated packages, but its checks are limited and do not establish privacy safety. Real PDF extraction, mobile rendering, and legacy plugin lifecycle still need manual validation.
+提交前失败时修正原因后再同步；提交后整理失败时使用 `--recover`。该命令只核验并完成剩余产物，不重跑笔记更新。若 Anki 已产生新复习记录导致指纹改变，自动恢复会拒绝，请保留现有数据库、备份和报告进行人工处理。
 
-## Repository boundary
+To roll back deliberately: close applications, preserve the current DB and its sidecars in a separate recovery folder, verify the pre-sync backup opens in an isolated Anki profile, then restore that backup as the configured collection. Restore into a new empty profile first whenever possible. A database backup does not replace a full media backup; this tool leaves original media untouched. Never copy only the main SQLite file from a running application, and never discard WAL files that may contain later reviews.
 
-Version source, templates, synthetic tests, and generic docs only. Private configuration, shortcuts, databases, exports, logs, caches, test profiles, and recovery bundles are ignored. Outputs outside `dist/` require another ignore rule or a location outside the checkout.
+回滚前先正常关闭应用，另存当前数据库及相关文件，并在隔离配置中验证同步前备份可打开。优先恢复到新建的空配置。不要从运行中的应用只复制主库，也不要随意删除可能含新复习记录的 WAL 文件。数据库备份不等于完整媒体备份。
 
-Inspect staged files and reachable history before publishing. Ignoring a file does not sanitize earlier commits. History rewrites require coordination and cannot erase other people's copies. No license has been selected. The card template is custom-made; bundled third-party components, such as Anki Persistence, need a separate licensing review before a public release.
+## Upgrade / 升级
+
+Extract a new release beside the old installation. Keep the old copy until acceptance passes. Copy only your private configuration deliberately; relative paths now refer to the new configuration folder. Run setup again, then `-Check` and `-DryRun`. Recreate the desktop shortcut if the install path changed. Keep backups and run journals; do not upload them. This RC does not migrate a binding to another Zotero Note.
+
+升级时解压到新目录，保留旧版和备份，重新执行设置、环境检查和 dry-run。移动配置后重新核对相对路径；项目移动后重建快捷方式。旧插件源码可保留，但不作为本次推荐安装入口。
+
+## Examples and sharing / 例句与分享
+
+Local PDF extraction supports text PDFs and cross-line hyphens. Scanned pages are reported for OCR; OCR is not bundled. Source lookup is constrained by library/group and attachment and excludes deleted sources before any text can reach an online provider. Offline is the default and `--refresh-examples` does not enable networking. Successful examples expire after 30 days, successful no-result queries after 1 day; failures are not durable empty results. Cache writes are atomic.
+
+Clean packages retain vocabulary and definitions as escaped learning text, with no private media. Local titles and local PDF sentences are omitted unless public provenance can be established; this RC conservatively omits all local-source metadata and uses only verified provider metadata for shareable examples. Offline runs do not make verification requests. A fixed, public Anki default deck configuration is retained because the importer requires config 1; no personal deck preferences or learned parameters are copied. Public metadata verification does not grant copyright permission for publication.
+
+clean 仅包含当前有效学习内容，使用独立分享身份，重复导入不会新增重复项，导回个人库不会覆盖个人卡。仅保留固定的 Anki 必需默认牌组配置。私人标签、Notes、来源标识、媒体和复习数据不进入 clean。私人内容若本来就写在单词或释义中，仍须自行检查后分享；自动结构校验不能理解所有自然语言隐私。
+
+## Maintainer validation / 维护者验证
+
+See `tests/MANUAL-INTEGRATION.md`. The 11 original audit families are mapped to regression tests there. Build only from a verified commit:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/build_release.py --output dist/release-candidate
+```
+
+The builder reads `release-files.txt` and file bytes from Git objects at the chosen commit. It excludes local config, audit material, recovery bundles, DBs, private APKGs, runtimes and `.git`; it verifies paths, file hashes and obvious credential patterns. It does not publish a release. GitHub Draft Pre-release creation is a separate, private, authorized step after acceptance.

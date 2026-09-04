@@ -2,110 +2,86 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Sync vocabulary already organized in a Zotero Note into Anki. The core goal is simple: add new words, update existing cards, and preserve review history and personal notes.
+**v0.2.0-rc.1 — private Windows pre-release candidate.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. This is not a stable or public release.
 
-> Development snapshot, not a stable release. Known issues include conflicting updates when a merged entry is split, partial writes after a failed sync, and incomplete filtering of sharing packages. Read [Known issues](KNOWN_ISSUES.md), test on a separate Anki profile, and keep backups. A file named `clean.apkg` is **not** guaranteed safe to share.
+## Install
 
-## What it does
+Validated baseline: **Windows x64, Python 3.13, Anki 26.5**, and PyMuPDF **1.28.2**. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
 
-- Reads one Zotero Note selected by its exact title, without modifying Zotero.
-- Parses vocabulary, pronunciation, definitions, and annotation links into a fixed Anki template.
-- Matches existing notes by Zotero annotation identifier first, then by normalized word.
-- Updates managed fields while preserving personal `Notes` and existing review data in ordinary one-to-one updates.
-- Marks entries missing from Zotero with `MissingFromZotero`; it does not delete them from the main collection.
-
-Zotero owns the vocabulary content. Anki owns review progress and personal `Notes`. Edits made in Anki to managed fields may be overwritten by the next sync.
-
-PDF example extraction, optional online examples, and APKG export are additional features. The older Zotero plugin sources are retained, but the local scripts are the primary workflow.
-
-## Requirements and first setup
-
-The launcher targets Windows. You need Zotero, Anki desktop, and Python compatible with Anki's bundled Python packages. The integration workflow has been tested with Python 3.13 and Anki 26.5; other combinations require verification. The source syntax requires Python 3.10 or newer.
-
-Run commands below from the repository folder:
+Extract the Windows ZIP to a writable local folder. Chinese characters and spaces are supported. From that folder:
 
 ```powershell
-python -m pip install -r requirements.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1
 Copy-Item config.example.json config.local.json
 ```
 
-Only copy the example on first setup; do not overwrite an existing private configuration.
+Copy the configuration only on first installation. Setup creates the project's `.venv`, installs the exact Windows PDF wheel with its SHA256 checked, and opens a disposable collection to verify the Anki backend. Use `-Python <python-executable>` or `-AnkiPackages <app_packages-folder>` for nonstandard installations. Setup downloads dependencies; daily synchronization is offline by default.
 
-## Private configuration
+## Configure
 
-Edit `config.local.json` on your own computer. It is ignored by Git and must not be uploaded.
+Edit the ignored `config.local.json` locally. Set `note_title` to the exact Zotero Note title, then set `anki_profile` or an explicit `collection` path. No profile is selected implicitly.
 
 | Setting | Meaning |
 | --- | --- |
-| `database` | Zotero database. The example uses `~/Zotero/zotero.sqlite`; change it for a custom data directory. |
-| `note_title` | Exact title of your vocabulary Note. `Vocabulary` is only an example. |
-| `anki_profile` | Your Anki profile folder name. No profile is selected automatically. |
-| `collection` | Optional explicit path to `collection.anki2`, instead of selecting a profile. |
-| `anki_packages`, `anki_exe` | Leave empty for the standard per-user Windows Anki installation; fill in for a custom installation. |
-| `output_dir` | Keep `dist` to use the repository's privacy exclusions. |
-| `no_online` | `true` by default: no online example queries. Set `false` only if you want external services to receive vocabulary search terms. |
-| `review_annotation_keys` | Optional local-only annotation identifiers to flag for manual review. |
+| `database` | Zotero SQLite file; defaults to the current user's Zotero folder. |
+| `note_title` | Exact, unique vocabulary Note title. |
+| `anki_profile`, `anki_root` | Anki profile folder name and optional custom root. |
+| `collection` | Explicit collection path; overrides a stored profile. |
+| `anki_packages`, `anki_exe` | Custom Anki installation paths; empty uses current-user defaults. |
+| `output_dir` | `dist` is recommended. A directory inside a Git checkout must be ignored by Git. |
+| `no_online` | Defaults to `true`. Setting `false` permits vocabulary terms to be sent to Crossref/Europe PMC for fallback examples. |
+| `review_annotation_keys` | Optional local annotation identifiers requiring manual review. |
 
-The Anki profile root is derived from the current user's Windows application-data folder; set `anki_root` for a custom root. JSON paths can use forward slashes, `~`, and environment variables. Relative JSON paths start at the configuration file's folder. If both `collection` and `anki_profile` are set, `collection` wins. Command-line options override local configuration.
+CLI options override the JSON, which overrides defaults. Relative JSON paths start at the configuration file; relative CLI paths start at the shell's working directory. An explicit CLI profile/root replaces a stored collection unless a CLI collection is also supplied. Keep real paths, Note titles, databases, reports and APKGs out of Git.
 
-Both PowerShell and Python use the same configuration resolver. Real paths, profile names, Note titles, and annotation identifiers belong in the local file, not source code or documentation.
+## Run
 
-## Run a sync
-
-Save your Zotero edits, then **fully close Zotero and Anki yourself**. Double-click `Syne_Zot2Anki.cmd`, or run:
+Save edits and **normally exit Zotero and Anki yourself**. The tool never force-closes them.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync_vocabulary.ps1
+.\Syne_Zot2Anki.cmd -Check
+.\Syne_Zot2Anki.cmd -DryRun
+.\Syne_Zot2Anki.cmd
 ```
 
-The launcher checks the environment, backs up the collection, performs the sync, exports files, and writes a report. It reopens Anki only after success. Failures leave the window open with an error summary. It never force-closes Zotero or Anki.
+`-Check` tests only the environment. `-DryRun` produces a private match/change report without committing to Anki. Normal operation prepares a consistent backup, plans the complete match, updates a candidate database, validates its packages, then replaces the original database. The collection-level lock prevents duplicate runs. Unmerged WAL, a newly started application, a changed original, identity conflicts and damaged vocabulary sources prevent commit.
 
-Optional desktop shortcut:
+A successful report identifies the updated collection. The Windows launcher opens Anki with the exact profile only when it can derive that profile from the configured root. Custom collection paths receive a result location instead. Add `-NoOpenAnki` to suppress reopening.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_desktop_shortcut.ps1
-```
+| PowerShell | Python | Purpose |
+| --- | --- | --- |
+| `-Check` | `--check` | Environment only. |
+| `-DryRun` | `--dry-run` | Match plan without database commit. |
+| `-AllowLargeRemoval` | `--allow-large-removal` | Allow the removal-count threshold only. |
+| `-RefreshExamples` | `--refresh-examples` | Bypass online cache when online lookup is enabled. |
+| `-NoOnline` | `--no-online` | Force offline operation. |
+| `-Recover <report>` | `--recover <report>` | Finish outputs of an already committed run. |
 
-The shortcut is named **Syne_Zot2Anki**. Its target is resolved from your local checkout; the shortcut itself is not versioned. The project can live in any folder.
+Direct commands use `.venv/Scripts/python.exe scripts/sync_vocabulary.py`; the direct Python command does not launch Anki. Export-only TSV remains available through `scripts/export_vocabulary_note.py`. Full sync requires PDF support even offline. An optional desktop shortcut can be created with `scripts/install_desktop_shortcut.ps1`.
 
-Advanced entry points:
+## Identity and outputs
 
-```powershell
-python scripts/sync_vocabulary.py --help
-python scripts/export_vocabulary_note.py --help
-python scripts/export_vocabulary_note.py --no-examples --no-online
-```
+Each collection binds to one Zotero Note in this RC. Library/group, attachment and annotation form the source identity. Word fallback applies only to already managed notes. Splits, merges and ambiguous identities stop the entire run. Migration adopts only previously tagged notes with complete, uniquely matching source links; unowned notes are listed and left alone. Shared-template changes affecting unowned notes are refused.
 
-The export-only command writes TSV without opening or modifying Anki. The Python sync entry point does not reopen Anki. Full sync still requires the PDF dependency when online queries are disabled.
+The personal deck, note type, sync tag and seven fields retain their historical `Zotero2Anki` identifiers. Changing those names would disconnect existing cards. Missing managed notes are tagged rather than deleted. Missing counts at or above `max(5, ceil(managed_count × 20%))` stop by default.
 
-## Cards and outputs
+Every run uses a time plus random ID and never overwrites existing artifacts:
 
-Deck and note type: `Zotero2Anki Vocabulary`.
+- Vocabulary TSV and review TSV.
+- **personal.apkg**: only this source's managed note IDs, including missing entries, personal Notes, tags, review history and required media. Treat it as private.
+- **clean.apkg**: current valid vocabulary built in a fresh database, with a distinct sharing note type and stable sharing GUID. No Notes, private tags, review logs, scheduling, Zotero links/identifiers or private media. Only text and built-in TTS are supported. Unverified local titles/examples are omitted; public provider examples retain verified public metadata. This boundary does not assess publication rights or whether your learning text itself is appropriate to share.
+- A consistent collection backup and a private JSON run journal with stages, binding, matches, exclusions, hashes, privacy checks and recovery information.
 
-The project is now named **Zot2Anki**. Existing Anki deck/note-type names and the sync tag intentionally retain their original values so the rename does not create a separate set of cards. No Anki data migration is performed by this rename.
+Only share the clean package after reviewing its learning text. Never share the personal package, backup, TSV, cache or local report. See [operations and recovery](IMPLEMENTATION_GUIDE.md), [known limitations](KNOWN_ISSUES.md), [changes](CHANGELOG.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
 
-Fields: `Word`, `Symbol`, `Chn`, `Example`, `Source`, `ZoteroKeys`, `Notes`. Only `Notes` is reserved for personal edits. Templates live in `anki-template/`.
-
-Local outputs under `dist/` include vocabulary TSV, review TSV, a sync report, collection backups, logs, example caches, and two APKG variants. Reports and logs may contain local paths and source information.
-
-- `personal.apkg` includes learning progress and personal notes. Treat it as private.
-- `clean.apkg` is intended to omit progress and personal notes, but its filtering has known gaps. Do not publish it without a separate privacy review.
-- Even an export without personal notes can contain vocabulary, source titles, DOI links, and Zotero identifiers. It is not anonymous.
-
-Generated files, databases, backups, PDFs, shortcuts, and private configurations are excluded by `.gitignore`. Ignoring a file does not delete it or remove it from earlier commits. Do not force-add private files. If you change the output folder, keep it outside the checkout or add an ignore rule before running.
-
-## Tests and documentation
+## Validation and release status
 
 ```powershell
-python -m unittest discover -s tests -p "test_*.py" -v
-python tests/integration_anki.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
 node --test tests/core.test.js
+.\.venv\Scripts\python.exe tests/integration_anki.py
 ```
 
-The Anki integration test creates temporary collections with synthetic data; it does not sync real vocabulary or change your existing collection. Existing tests do not cover every known sync boundary. Repository privacy tests are basic guardrails, not a comprehensive secret scanner.
+Windows CI uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
 
-- [Implementation and operations guide](IMPLEMENTATION_GUIDE.md)
-- [Known issues and limitations](KNOWN_ISSUES.md)
-- [Legacy plugin manual tests](tests/MANUAL-INTEGRATION.md)
-
-No open-source license has been selected. The card template is custom-made; licensing of bundled third-party components needs separate review before a public release.
+No project open-source license has been chosen. Previously exposed, unreferenced GitHub objects remain a **public-release blocker** until resolved. This candidate keeps the repository private and is prepared only as a Draft Pre-release; main is not merged and the draft is not published.

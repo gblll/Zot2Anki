@@ -19,6 +19,8 @@
 *.zip
 *.bak
 *.backup
+*.zot2anki.lock
+.zot2anki-candidate-*/
 
 # Python dependencies and generated files.
 __pycache__/

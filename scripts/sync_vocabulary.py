@@ -84,7 +84,7 @@ def _running_applications() -> list[str]:
         )
         if result.returncode != 0:
             raise SyncError(
-                "无法确认 Zotero/Anki 是否已关闭。请改用 scripts/sync_vocabulary.ps1 运行。"
+                "无法读取本地进程列表；请在允许查询进程的 Windows 终端重试。不会绕过应用状态检查。"
             )
         if executable.casefold() in result.stdout.casefold():
             running.append(label)
