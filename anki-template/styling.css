@@ -1,0 +1,337 @@
+.card {
+  --z2a-page: #f7f7f7;
+  --z2a-panel: #ffffff;
+  --z2a-meaning-panel: #fffbf0;
+  --z2a-example-panel: #fcfcf5;
+  --z2a-source-panel: #eef6f6;
+  --z2a-text: #202124;
+  --z2a-muted: #667085;
+  --z2a-accent: #e12e25;
+  --z2a-link: #006e54;
+  --z2a-shadow: 0 2px 5px rgba(0, 0, 0, 0.10);
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 5px 8px;
+  border-radius: 12px;
+  background-color: var(--z2a-page);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-size: cover;
+  color: var(--z2a-text);
+  font-family: Helvetica, "Microsoft YaHei", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+body[data-z2a-theme="2"] {
+  --z2a-page: #e8f8db;
+  --z2a-panel: rgba(216, 243, 226, 0.50);
+  --z2a-meaning-panel: rgba(216, 243, 226, 0.50);
+  --z2a-example-panel: rgba(216, 243, 226, 0.50);
+  --z2a-source-panel: rgba(216, 243, 226, 0.50);
+  background-image: linear-gradient(to bottom, #a0e5d3 0%, #c1f0d6 35%, #d8f5d9 70%, #e8f8db 100%);
+}
+
+body[data-z2a-theme="3"] {
+  --z2a-page: #e8f4fd;
+  --z2a-panel: rgba(255, 255, 255, 0.30);
+  --z2a-meaning-panel: rgba(255, 255, 255, 0.30);
+  --z2a-example-panel: rgba(255, 255, 255, 0.30);
+  --z2a-source-panel: rgba(255, 255, 255, 0.30);
+  --z2a-text: #1a365d;
+  background-image: linear-gradient(to bottom, #bbdefb 0%, #d1e8fa 35%, #e0f0fc 70%, #e8f4fd 100%);
+}
+
+body[data-z2a-theme="4"] {
+  --z2a-page: #ffebee;
+  --z2a-panel: rgba(255, 255, 255, 0.30);
+  --z2a-meaning-panel: rgba(255, 255, 255, 0.30);
+  --z2a-example-panel: rgba(255, 255, 255, 0.30);
+  --z2a-source-panel: rgba(255, 255, 255, 0.30);
+  --z2a-text: #60281e;
+  background-image: linear-gradient(to bottom, #ffcaca 0%, #ffd6d8 50%, #ffebee 100%);
+}
+
+body[data-z2a-theme="5"] {
+  --z2a-page: #fbf1dc;
+  --z2a-panel: rgba(255, 255, 255, 0.30);
+  --z2a-meaning-panel: rgba(255, 255, 255, 0.30);
+  --z2a-example-panel: rgba(255, 255, 255, 0.30);
+  --z2a-source-panel: rgba(255, 255, 255, 0.30);
+  --z2a-text: #000000;
+  background-image: linear-gradient(to bottom, #eed9a7 0%, #f5e4be 50%, #fbf1dc 100%);
+}
+
+body[data-z2a-theme="6"] {
+  --z2a-page: #110e0d;
+  --z2a-panel: rgba(255, 255, 255, 0.10);
+  --z2a-meaning-panel: rgba(255, 255, 255, 0.10);
+  --z2a-example-panel: rgba(255, 255, 255, 0.10);
+  --z2a-source-panel: rgba(255, 255, 255, 0.10);
+  --z2a-text: #ffffff;
+  --z2a-muted: #d0d0d0;
+  --z2a-accent: #ff6b65;
+  --z2a-link: #91d6be;
+  --z2a-shadow: 0 2px 8px rgba(0, 0, 0, 0.38);
+  background-image: linear-gradient(to bottom, #333a42 0%, #232428 30%, #0c0c0c 70%, #110e0d 100%);
+}
+
+body.nightMode[data-z2a-theme="1"],
+body.night_mode[data-z2a-theme="1"] {
+  --z2a-page: #000000;
+  --z2a-panel: #1c1c1e;
+  --z2a-meaning-panel: #1c1c1e;
+  --z2a-example-panel: #1c1c1e;
+  --z2a-source-panel: #1c1c1e;
+  --z2a-text: #ffffff;
+  --z2a-muted: #d0d0d0;
+  --z2a-accent: #ff6b65;
+  --z2a-link: #91d6be;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+.z2a-root {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.z2a-toolbar {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px;
+  margin-bottom: 5px;
+  border-radius: 12px;
+  color: var(--z2a-muted);
+  font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 12px;
+  user-select: none;
+}
+
+.z2a-theme-selector {
+  display: flex;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.z2a-theme-button {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  outline: none;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.z2a-theme-button:hover,
+.z2a-theme-button.is-active {
+  transform: scale(1.25);
+}
+
+.z2a-theme-button[data-theme="1"] { background: #e0e0e0; }
+.z2a-theme-button[data-theme="2"] { background: linear-gradient(to bottom, #a0e5d3, #e8f8db); }
+.z2a-theme-button[data-theme="3"] { background: linear-gradient(to bottom, #eaf7ff, #d0f0ff); }
+.z2a-theme-button[data-theme="4"] { background: linear-gradient(to bottom, #ffcaca, #ffebee); }
+.z2a-theme-button[data-theme="5"] { background: linear-gradient(to bottom, #eed9a7, #fbf1dc); }
+.z2a-theme-button[data-theme="6"] { background: linear-gradient(to bottom, #333a42, #110e0d); }
+
+.z2a-section {
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  border: 0;
+  border-radius: 12px;
+  background-color: var(--z2a-panel);
+  box-shadow: var(--z2a-shadow);
+}
+
+.z2a-meaning-section { background-color: var(--z2a-meaning-panel); }
+.z2a-example-section { background-color: var(--z2a-example-panel); }
+.z2a-source-section { background-color: var(--z2a-source-panel); }
+
+.z2a-word {
+  font-size: 36px;
+  font-weight: bold;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.z2a-symbol {
+  padding: 5px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.pronunciation-item {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 6px;
+  font-size: 16px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.pronunciation-label {
+  margin-right: 2px;
+  font-size: 0;
+  line-height: 1;
+}
+
+.pronunciation-label::before {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pronunciation-uk .pronunciation-label::before { content: "🇬🇧"; }
+.pronunciation-us .pronunciation-label::before { content: "🇺🇸"; }
+.pronunciation-uk .pronunciation-ipa { color: #a52a2a; }
+.pronunciation-us .pronunciation-ipa { color: #045fb4; }
+
+body.nightMode .pronunciation-uk .pronunciation-ipa,
+body.night_mode .pronunciation-uk .pronunciation-ipa { color: #ff8a80; }
+body.nightMode .pronunciation-us .pronunciation-ipa,
+body.night_mode .pronunciation-us .pronunciation-ipa { color: #82b1ff; }
+
+.z2a-audio {
+  min-height: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.z2a-audio .replay-button { display: none !important; }
+.replay-button svg { width: 30px; height: 30px; }
+.replay-button svg circle { fill: #231f20; }
+.replay-button svg path { fill: #91c462; stroke: #91c462; }
+
+.z2a-definition {
+  padding: 5px;
+  font-size: 18px;
+  line-height: 1.4;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.z2a-definition hr {
+  height: 1px;
+  margin: 10px 0;
+  border: 0;
+  background: rgba(128, 128, 128, 0.20);
+}
+
+.z2a-pos {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: "Times New Roman", serif;
+  font-style: italic;
+  font-weight: bold;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.z2a-pos-noun { background-color: #32b67c; }
+.z2a-pos-exclamation, .z2a-pos-plural { background-color: #21a675; }
+.z2a-pos-adjective { background-color: #f8b002; }
+.z2a-pos-adverb { background-color: #684b9d; }
+.z2a-pos-verb { background-color: #479cdf; }
+.z2a-pos-intransitive-verb { background-color: #3a86ca; }
+.z2a-pos-transitive-verb { background-color: #2d74b3; }
+.z2a-pos-preposition, .z2a-pos-auxiliary { background-color: #04b7c9; }
+.z2a-pos-conjunction { background-color: #049cb3; }
+.z2a-pos-pronoun { background-color: #789262; }
+.z2a-pos-article { background-color: #896c39; }
+.z2a-pos-number { background-color: #6a8054; }
+.z2a-pos-interjection { background-color: #665757; }
+.z2a-pos-modal { background-color: #75878a; }
+.z2a-pos-abbreviation { background-color: #d111d3; }
+.z2a-pos-determiner { background-color: #4a6bc2; }
+.z2a-pos-na { background-color: #ff7f50; }
+
+.z2a-notes {
+  margin: 5px 20px;
+  color: #cc0033;
+  font-size: 16px;
+  text-align: center;
+}
+
+body[data-z2a-theme="6"] .z2a-notes,
+body.nightMode .z2a-notes,
+body.night_mode .z2a-notes { color: #ff849d; }
+
+.z2a-example-section {
+  font-size: 13px;
+  text-align: left;
+}
+
+.z2a-examples {
+  display: grid;
+  gap: 7px;
+}
+
+.z2a-example {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.z2a-example-kind {
+  margin-bottom: 3px;
+  color: var(--z2a-muted);
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.z2a-example-text {
+  font-family: Helvetica, "Microsoft YaHei", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.z2a-example-text strong {
+  color: var(--z2a-accent);
+  font-weight: bold;
+}
+
+.z2a-example-meta {
+  margin-top: 3px;
+  color: gray;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.z2a-example-link {
+  margin-left: 5px;
+  color: var(--z2a-link);
+  font-weight: normal;
+  text-decoration: none;
+}
+
+.zotero2anki-source { text-align: left; }
+
+.zotero2anki-source-link {
+  display: inline-block;
+  margin: 3px 0;
+  padding: 5px 8px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  color: var(--z2a-link);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.zotero2anki-source-link:hover { background: rgba(40, 190, 160, 0.10); }

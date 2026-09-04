@@ -1,0 +1,11 @@
+{
+  "database": "~/Zotero/zotero.sqlite",
+  "note_title": "Vocabulary",
+  "anki_profile": "",
+  "collection": "",
+  "anki_packages": "",
+  "anki_exe": "",
+  "output_dir": "dist",
+  "no_online": true,
+  "review_annotation_keys": []
+}

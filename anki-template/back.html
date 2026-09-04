@@ -1,0 +1,148 @@
+<script>
+window.currentTheme_default = 1;
+
+if (typeof window.Persistence === "undefined") {
+  (function () {
+    var namespace = "github.com/SimonLammer/anki-persistence/";
+    var defaultKey = "_default";
+
+    function SessionStoragePersistence() {
+      var available = false;
+      try {
+        available = typeof window.sessionStorage === "object";
+        this.setItem = function (key, value) {
+          if (value === undefined) { value = key; key = defaultKey; }
+          sessionStorage.setItem(namespace + key, JSON.stringify(value));
+        };
+        this.getItem = function (key) {
+          if (key === undefined) { key = defaultKey; }
+          return JSON.parse(sessionStorage.getItem(namespace + key));
+        };
+        this.removeItem = function (key) {
+          if (key === undefined) { key = defaultKey; }
+          sessionStorage.removeItem(namespace + key);
+        };
+      } catch (_error) {}
+      this.isAvailable = function () { return available; };
+    }
+
+    function WindowPersistence(windowKey) {
+      var target = window[windowKey];
+      var available = typeof target === "object";
+      if (available) {
+        if (target[namespace] === undefined) { target[namespace] = {}; }
+        this.setItem = function (key, value) {
+          if (value === undefined) { value = key; key = defaultKey; }
+          target[namespace][key] = value;
+        };
+        this.getItem = function (key) {
+          if (key === undefined) { key = defaultKey; }
+          return target[namespace][key] === undefined ? null : target[namespace][key];
+        };
+        this.removeItem = function (key) {
+          if (key === undefined) { key = defaultKey; }
+          delete target[namespace][key];
+        };
+      }
+      this.isAvailable = function () { return available; };
+    }
+
+    window.Persistence = new SessionStoragePersistence();
+    if (!window.Persistence.isAvailable()) {
+      window.Persistence = new WindowPersistence("py");
+    }
+    if (!window.Persistence.isAvailable()) {
+      var href = window.location.toString();
+      var titleIndex = href.indexOf("title");
+      var mainIndex = href.indexOf("main", titleIndex);
+      if (titleIndex > 0 && mainIndex > 0 && mainIndex - titleIndex < 10) {
+        window.Persistence = new WindowPersistence("qt");
+      }
+    }
+  })();
+}
+</script>
+
+<div class="z2a-root z2a-back">
+  <div class="z2a-toolbar" id="theme-toolbar" aria-label="主题选择">
+    <div class="z2a-theme-selector">
+      <button class="z2a-theme-button" type="button" data-theme="1" title="简白" aria-label="简白主题"></button>
+      <button class="z2a-theme-button" type="button" data-theme="2" title="浅绿" aria-label="浅绿主题"></button>
+      <button class="z2a-theme-button" type="button" data-theme="3" title="天蓝" aria-label="天蓝主题"></button>
+      <button class="z2a-theme-button" type="button" data-theme="4" title="桃粉" aria-label="桃粉主题"></button>
+      <button class="z2a-theme-button" type="button" data-theme="5" title="草纸" aria-label="草纸主题"></button>
+      <button class="z2a-theme-button" type="button" data-theme="6" title="暗夜" aria-label="暗夜主题"></button>
+    </div>
+  </div>
+
+  <main>
+    <section class="z2a-section z2a-word-section">
+      <div class="z2a-word">{{Word}}</div>
+      {{#Symbol}}<div class="z2a-symbol">{{Symbol}}</div>{{/Symbol}}
+      <div class="z2a-audio" aria-label="播放美音">{{tts en_US voices=Apple_Samantha,Microsoft_Zira:Word}}</div>
+      {{#Notes}}<div class="z2a-notes">{{Notes}}</div>{{/Notes}}
+    </section>
+
+    {{#Chn}}
+    <section class="z2a-section z2a-meaning-section">
+      <div class="z2a-definition">{{Chn}}</div>
+    </section>
+    {{/Chn}}
+
+    {{#Example}}
+    <section class="z2a-section z2a-example-section">
+      {{Example}}
+    </section>
+    {{/Example}}
+
+    {{#Source}}
+    <section class="z2a-section z2a-source-section">
+      {{Source}}
+    </section>
+    {{/Source}}
+  </main>
+</div>
+
+<script>
+(function () {
+  var persistenceKey = "selectedTheme";
+  var legacyStorageKey = "zotero2anki-theme-v1";
+  var fallbackTheme = String(window.currentTheme_default || 1);
+
+  function readTheme() {
+    try {
+      if (window.Persistence && window.Persistence.isAvailable()) {
+        var saved = window.Persistence.getItem(persistenceKey);
+        if (saved !== null && saved !== undefined) { return String(saved); }
+      }
+    } catch (_error) {}
+    try { return localStorage.getItem(legacyStorageKey) || fallbackTheme; }
+    catch (_error) { return fallbackTheme; }
+  }
+
+  function saveTheme(theme) {
+    try {
+      if (window.Persistence && window.Persistence.isAvailable()) {
+        window.Persistence.setItem(persistenceKey, theme);
+      }
+    } catch (_error) {}
+    try { localStorage.setItem(legacyStorageKey, theme); } catch (_error) {}
+  }
+
+  function applyTheme(theme) {
+    var selected = /^[1-6]$/.test(String(theme)) ? String(theme) : fallbackTheme;
+    document.body.setAttribute("data-z2a-theme", selected);
+    document.querySelectorAll(".z2a-theme-button").forEach(function (button) {
+      button.classList.toggle("is-active", button.getAttribute("data-theme") === selected);
+    });
+    saveTheme(selected);
+  }
+
+  document.querySelectorAll(".z2a-theme-button").forEach(function (button) {
+    button.addEventListener("click", function () {
+      applyTheme(button.getAttribute("data-theme"));
+    });
+  });
+  applyTheme(readTheme());
+})();
+</script>
