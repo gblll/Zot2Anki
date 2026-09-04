@@ -1,40 +1,50 @@
-# Zotero 10 手动集成测试
+# Acceptance / 验收
 
-建议使用独立的 Zotero 测试配置文件和测试资料库，避免污染日常资料。
+All automated tests use temporary synthetic data. Use the project `.venv`, Python 3.13 and Anki 26.5. CI can set `ZOT2ANKI_TEST_ANKI_PACKAGES` for its disposable backend; this variable changes only tests, never production application detection.
 
-## 安装与生命周期
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
+node --test tests/core.test.js
+.\.venv\Scripts\python.exe tests/integration_anki.py
+```
 
-1. 运行 `scripts/build.ps1`，安装 `dist/zot2anki-0.1.0.xpi`。
-2. 确认“工具”菜单显示“导出 Anki 单词表…”。
-3. 在 Zotero 设置中确认存在 Zot2Anki 页面，默认颜色为 `#ff6666`、关键词为“生词”。
-4. 禁用、重新启用插件，确认菜单和设置页没有重复；卸载后两者均消失。
+## Original audit regressions
 
-## 筛选与合并夹具
+| Audit family | Regression |
+| --- | --- |
+| Split double write | `test_sync_identity`: split/merge/input conflicts and unchanged notes. |
+| Partial write after late failure | `test_sync_transaction`: migration, write, export and commit faults; original hash unchanged. |
+| Unmanaged same-type cards | `test_sync_identity`: no word adoption/missing marker; shared-model migration refusal. |
+| Empty/damaged source | `test_sync_identity`, `test_example_safety`: empty input and deleted source link stop. |
+| Private APKG leakage / misleading validator | `test_sync_packages`: explicit personal IDs; unused model/deck metadata, extra notes/tables, tags/media and raw scheduling rejected. |
+| Literal HTML / repeated escaping | Python direct/TSV and `core.test.js` legacy Front regressions. |
+| WAL missing from backup | `test_sync_safety`: committed WAL present in SQLite backup, original WAL blocks commit. |
+| Cross-library annotation collision | `test_example_safety`: same annotation key in different libraries and attachment/deletion filtering. |
+| Invalid source outbound lookup | `test_example_safety`, `test_export_vocabulary_note`: provider never sees invalid source text. |
+| Failed query cached forever | `test_example_safety`: retry after failure, separate TTLs, explicit refresh. |
+| Prefix/substring word match | `test_example_safety`, `test_vocabulary_examples`: word boundaries and PDF cross-line hyphens. |
 
-在个人资料库中准备以下批注：
+Additional tests cover source changes, adoption, restored missing notes, repeated sync, preserved card identity/Notes/review state, clean re-import isolation, synthetic PDF extraction, default offline operation, run locks, output collisions, recovery, environment gating and applications starting before commit.
 
-| 类型 | 颜色 | 批注标签 | 文本 | 评论 | 预期 |
-| --- | --- | --- | --- | --- | --- |
-| 高亮 | 红色 | 生词/单词 | Apple | 苹果 | 导出 |
-| 高亮 | 红色 | 生词/短语 | ` apple ` | 空 | 与 Apple 合并 |
-| 高亮 | 黄色 | 生词/单词 | yellow | 黄色 | 排除 |
-| 高亮 | 红色 | 单词 | untagged | 未命中 | 排除 |
-| 下划线 | 红色 | 生词/单词 | underline | 下划线 | 排除 |
+## Clean install
 
-再分别从 PDF、EPUB 和网页快照创建命中高亮，并在群组资料库重复一组测试。
+Build only allowlisted Git objects at a verified commit:
 
-## 导出验收
+```powershell
+.\.venv\Scripts\python.exe scripts/build_release.py --output dist/acceptance-release
+.\.venv\Scripts\python.exe tests/clean_install.py dist/acceptance-release/Zot2Anki-v0.2.0-rc.1-windows.zip --report dist/install-acceptance.json
+```
 
-- 同时选择多个资料库时应提示只能选择一个，不创建文件。
-- 无匹配结果时应显示提示，不打开保存窗口。
-- 取消保存时不创建文件且不报错；覆盖已有文件时正常写入。
-- 完成提示中的扫描数、匹配数、唯一词数、合并数、空评论数和错误数正确。
-- PDF 来源链接打开到具体批注；EPUB/网页快照链接定位到对应附件条目。
-- 制造一个无法解析的孤立批注时，其余项目仍导出，并在“跳过错误”中计数。
+The second command creates a new Chinese/space directory and `.venv`, runs setup, environment checks, dry-run and two full syncs through the extracted PowerShell launcher, and checks CMD argument forwarding. It does not select a real profile or launch Anki. To reuse a hash-verified wheel directory offline, pass `--wheelhouse <directory>`.
 
-## Anki 验收
+## Actual data acceptance
 
-1. 在 Anki 中选择“文件 → 导入”，选择生成的 TSV。
-2. 使用“基础”笔记类型，将 Front、Back 映射到对应字段，第三列识别为 Tags。
-3. 确认 HTML 已启用，中文、换行、来源列表和标签显示正确。
-4. 再次导入同一文件并选择更新现有笔记，确认卡片学习进度不丢失且不产生重复卡片。
+Never run experiments against the daily database. Normally close applications yourself and create SQLite-backup snapshots. Capture original fingerprints before/after snapshotting. Copy only referenced PDFs/media into a private, ignored acceptance folder. Use a separate collection and config for every trial. Compare GUID, note/card IDs, personal Notes, queue/repetition/interval/due values and review logs across repeated syncs, and inspect physical package databases.
+
+Invalid source records must be rejected with no commit. If the actual Note contains stale annotations, preserve that failing copy and a local detail report; a separate copy may remove those invalid input paragraphs for the positive-path trial. Explicitly record the filtered count, unowned history count and remaining daily-use data repair requirement. Never silently edit the real Note to pass acceptance.
+
+真实资料只能使用一致性副本。需要保留原库指纹、无效来源明细以及过滤后的正向验收范围。来源失效时应验证拒绝提交；不能修改正式资料或关闭保护来制造成功结果。
+
+## Release gate
+
+The exact release commit must pass unit/legacy tests, raw package privacy tests, clean-install verification and the Windows CI workflow. Build the ZIP from that commit's `release-files.txt`; inspect every payload entry and hash. Save a sanitized summary alongside the SHA256 list. Confirm the repository remains private, record old-object accessibility as unresolved, and create only a Draft Pre-release. No main merge, repository deletion, history rewrite or support message is part of this workflow.

@@ -12,7 +12,8 @@ BINDING = {'library_id': 1, 'note_key': 'TESTNOTE'}
 
 def card(word, *keys):
     source = ''.join(f'<a href="zotero://open-pdf/library/items/ATT?annotation={key}">source</a>' for key in keys)
-    return Card(word, '', 'meaning', '', source, list(keys), ['Zotero2Anki'], len(keys), [], [], '')
+    return Card(word, '', 'meaning', '', source, list(keys), ['Zotero2Anki'],
+                [f'zotero://open-pdf/library/items/ATT?annotation={key}' for key in keys], [], [], '')
 
 
 class IdentityTests(unittest.TestCase):
@@ -43,6 +44,8 @@ class IdentityTests(unittest.TestCase):
         guid = note.guid
         self.col.update_note(note)
         cards_before = self.col.db.all('select id,nid from cards order by id')
+        self.col.db.execute('update cards set type=2,queue=2,reps=9,ivl=22,due=100 where nid=?', note_id)
+        history_before = self.col.db.all('select id,nid,queue,reps,ivl,due from cards order by id')
         self.run_sync([card('renamed', 'A')])
         self.run_sync([card('renamed', 'A'), card('two', 'B')])
         result = self.run_sync([card('renamed', 'A'), card('two', 'B')])
@@ -51,6 +54,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(self.col.get_note(note_id)['Notes'], 'private notes')
         self.assertIn('private', self.col.get_note(note_id).tags)
         self.assertEqual(self.col.db.all('select id,nid from cards order by id'), cards_before)
+        self.assertEqual(self.col.db.all('select id,nid,queue,reps,ivl,due from cards order by id'), history_before)
         self.assertFalse(self.col.find_notes('tag:MissingFromZotero'))
 
     def test_split_and_merge_conflicts_make_no_changes(self):

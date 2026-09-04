@@ -67,6 +67,9 @@ LABELED_MULTIBLOCK_PRONUNCIATION_PATTERN = re.compile(
 
 class ExportError(RuntimeError):
     """A user-facing export error."""
+    def __init__(self, message, *, conflicts=None):
+        super().__init__(message)
+        self.conflicts = conflicts or []
 
 
 @dataclass
@@ -91,6 +94,7 @@ class ParagraphRecord:
     source_context: SourceContext | None = None
     examples: list[ExampleCandidate] = field(default_factory=list)
     example_tags: list[str] = field(default_factory=list)
+    raw_text: str = ''
 
 
 @dataclass
@@ -267,6 +271,7 @@ class _VocabularyNoteParser(HTMLParser):
                 "segments": [[]],
                 "code_count": 0,
                 "link_count": 0,
+                "raw_text": [],
             }
             return
         paragraph = self._paragraph
@@ -279,7 +284,7 @@ class _VocabularyNoteParser(HTMLParser):
                 paragraph["href"] = href
                 paragraph["capturing_front"] = True
             return
-        if tag == "code" and paragraph["after_source"]:
+        if tag == "code":
             paragraph["code_count"] += 1
         elif tag == "br" and paragraph["after_source"]:
             paragraph["segments"].append([])
@@ -301,6 +306,7 @@ class _VocabularyNoteParser(HTMLParser):
         paragraph = self._paragraph
         if paragraph is None:
             return
+        paragraph['raw_text'].append(data)
         if paragraph["capturing_front"]:
             paragraph["front_parts"].append(data)
         elif paragraph["after_source"]:
@@ -338,6 +344,7 @@ class _VocabularyNoteParser(HTMLParser):
                 code_count=paragraph["code_count"],
                 link_count=paragraph["link_count"],
                 review_reasons=reasons,
+                raw_text=normalize_text(''.join(paragraph['raw_text'])),
             )
         )
         self._paragraph_index += 1
@@ -427,12 +434,18 @@ def enrich_records_with_examples(
     cache_path: Path,
     online_fallback: bool = False,
     refresh_examples: bool = False,
+    strict_sources: bool = False,
 ) -> dict[str, int]:
     """Attach Zotero metadata and at most one local/online result per source record."""
 
     valid = [record for record in records if record.front and source_identity(record.href)]
     hrefs = [record.href for record in valid]
     contexts = load_source_contexts(connection, hrefs, data_dir)
+    unresolved = [{'paragraph_index': r.index, 'word': r.front, 'source': r.href,
+                   'reason': 'annotation_not_found_or_deleted'}
+                  for r in valid if source_identity(r.href) not in contexts]
+    if strict_sources and unresolved:
+        raise ExportError(f'{len(unresolved)} 条生词来源无法对应到有效 annotation；请检查本地报告明细', conflicts=unresolved)
     local_sentences = 0
     local_fragments = 0
     online_sentences = 0
@@ -725,12 +738,15 @@ def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = N
     return vocabulary_path, review_path
 
 
-def validate_records(records):
+def validate_records(records, note_title=''):
     damaged = [record.index for record in records
                if (record.front or record.code_count) and
                (not record.front or not source_identity(record.href) or record.link_count != 1)]
+    damaged += [record.index for record in records if not record.front and record.raw_text and
+                not (record.index == 0 and record.raw_text == note_title) and record.index not in damaged]
     if damaged:
-        raise ExportError(f'生词来源格式损坏，段落序号：{damaged}')
+        raise ExportError(f'生词来源格式损坏，段落序号：{damaged}',
+                          conflicts=[{'paragraph_index': index, 'reason': 'invalid_source_format'} for index in damaged])
     if not any(record.front and source_identity(record.href) for record in records):
         raise ExportError('未解析出有效生词，停止同步')
 
@@ -753,7 +769,7 @@ def export_note(
         note = find_note(connection, note_title)
         records = parse_note_html(note.note_html)
         if strict:
-            validate_records(records)
+            validate_records(records, note.title)
         review_keys = {key.upper() for key in (review_annotation_keys or [])}
         for record in records:
             record.zotero_key = extract_annotation_key(record.href)
@@ -768,7 +784,12 @@ def export_note(
                 cache_path=cache_path or output_dir / "cache" / "academic-examples.json",
                 online_fallback=online_fallback,
                 refresh_examples=refresh_examples,
+                strict_sources=strict,
             )
+    except ExportError as exc:
+        if 'note' in locals():
+            exc.binding = {'library_id': note.library_id, 'note_key': note.key}
+        raise
     finally:
         connection.close()
     cards, stats = build_cards(records)

@@ -328,6 +328,8 @@ def main(argv: list[str] | None = None) -> int:
                 pass
         state['error'] = str(exc)
         state['conflicts'] = getattr(exc, 'conflicts', [])
+        if hasattr(exc, 'binding'):
+            state['binding'] = exc.binding
         if not state['committed']:
             state['failed_stage'] = state['stage']
             state['stage'] = 'failed_before_commit'

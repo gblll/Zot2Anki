@@ -67,10 +67,11 @@ class TransactionTests(unittest.TestCase):
     def test_precommit_faults_leave_original_untouched(self):
         for module, name in [(sync, '_ensure_notetype'), (sync_plan, 'execute_plan'),
                              (sync_packages, 'export_personal'), (storage, 'commit_candidate')]:
-            with self.subTest(stage=name), patch.object(module, name, side_effect=OSError('synthetic disk/permission failure')):
+            with self.subTest(stage=name), patch.object(module, name, side_effect=OSError('synthetic disk/permission failure')) as failure:
                 with self.assertRaises(sync.SyncError):
                     self.run_cli()
                 self.assertEqual(storage.fingerprint(self.collection), self.before)
+                failure.assert_called_once()
 
     def test_postcommit_output_fault_is_recoverable_without_resync(self):
         with patch.object(storage, 'publish_file', side_effect=PermissionError('synthetic output failure')):
@@ -99,3 +100,16 @@ class TransactionTests(unittest.TestCase):
     def test_unsafe_repository_output_is_rejected(self):
         with self.assertRaises(sync.SyncError):
             sync.check_output_directory(sync.local_config.ROOT / 'unsafe-results')
+
+    def test_starting_app_between_preflight_and_commit_blocks_commit(self):
+        with patch.object(sync, '_running_applications', side_effect=[[], ['Anki']]):
+            with self.assertRaises(sync.SyncError):
+                self.run_cli()
+        self.assertEqual(storage.fingerprint(self.collection), self.before)
+
+    def test_wrong_environment_never_opens_personal_databases(self):
+        with patch.object(sync.runtime_check, 'check_runtime', side_effect=RuntimeError('wrong runtime')), patch.object(storage, 'consistent_backup') as backup:
+            with self.assertRaises(RuntimeError):
+                self.run_cli()
+            backup.assert_not_called()
+        self.assertEqual(storage.fingerprint(self.collection), self.before)

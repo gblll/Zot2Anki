@@ -51,22 +51,37 @@ def validate_database(path: Path) -> None:
 
 
 def consistent_backup(source: Path, target: Path) -> None:
-    if target.exists():
-        raise StorageError('备份文件已存在；禁止覆盖')
-    # SQLite backup, unlike copy2(), includes committed pages still in the WAL.
-    src = sqlite3.connect(source.resolve().as_uri() + '?mode=ro', uri=True, timeout=1)
-    dst = sqlite3.connect(target)
-    import time
-    deadline = time.monotonic() + 15
-    def progress(status, remaining, total):
-        if time.monotonic() > deadline:
-            raise StorageError('备份等待超时；数据库可能正在使用')
     try:
+        with target.open('xb'):
+            pass
+    except FileExistsError as exc:
+        raise StorageError('备份文件已存在；禁止覆盖') from exc
+    src = dst = None
+    try:
+        # SQLite backup includes committed pages still in the WAL.
+        src = sqlite3.connect(source.resolve().as_uri() + '?mode=ro', uri=True, timeout=1)
+        dst = sqlite3.connect(target)
+        import time
+        deadline = time.monotonic() + 15
+        def progress(status, remaining, total):
+            if time.monotonic() > deadline:
+                raise StorageError('备份等待超时；数据库可能正在使用')
         src.backup(dst, pages=256, progress=progress, sleep=0.05)
-    finally:
         dst.close()
+        dst = None
         src.close()
-    validate_database(target)
+        src = None
+        validate_database(target)
+    except Exception:
+        if dst is not None:
+            dst.close()
+        if src is not None:
+            src.close()
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        raise
 
 
 class CollectionLock(AbstractContextManager):

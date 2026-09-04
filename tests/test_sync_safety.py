@@ -88,3 +88,13 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(dst.read_bytes(), b'package')
             self.assertEqual(db.read_bytes(), b'committed')
             self.assertEqual(json.loads(journal.read_text())['stage'], 'complete')
+
+    def test_failed_backup_does_not_leave_a_misleading_backup_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            target = root / 'backup.anki2'
+            source = root / 'damaged.anki2'
+            source.write_bytes(b'not a SQLite database')
+            with self.assertRaises(sqlite3.Error):
+                storage.consistent_backup(source, target)
+            self.assertFalse(target.exists())

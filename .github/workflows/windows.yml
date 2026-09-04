@@ -1,0 +1,47 @@
+name: Windows RC validation
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-validation:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      ZOT2ANKI_TEST_ANKI_PACKAGES: ${{ github.workspace }}\dist\ci-anki
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+          architecture: x64
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install isolated backend and locked PDF dependency
+        shell: pwsh
+        run: |
+          python -m pip install --only-binary=:all: --target "$env:ZOT2ANKI_TEST_ANKI_PACKAGES" anki==26.5
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./scripts/setup.ps1 -Python (Get-Command python).Source -AnkiPackages "$env:ZOT2ANKI_TEST_ANKI_PACKAGES"
+      - name: Unit, synthetic PDF, transaction, raw APKG and privacy regressions
+        shell: pwsh
+        run: |
+          ./.venv/Scripts/python.exe -m unittest discover -s tests -t . -v
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node --test tests/core.test.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build audited source ZIP and test clean installation
+        shell: pwsh
+        run: |
+          ./.venv/Scripts/python.exe scripts/build_release.py --output dist/ci-release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./.venv/Scripts/python.exe -m pip download --require-hashes --only-binary=:all: --no-deps -r requirements.txt --dest dist/wheelhouse
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./.venv/Scripts/python.exe tests/clean_install.py dist/ci-release/Zot2Anki-v0.2.0-rc.1-windows.zip --wheelhouse dist/wheelhouse --anki-packages "$env:ZOT2ANKI_TEST_ANKI_PACKAGES" --report dist/ci-install.json

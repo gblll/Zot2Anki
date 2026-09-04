@@ -87,3 +87,8 @@ class ExampleSafetyTests(unittest.TestCase):
             with self.assertRaises(exporter.ExportError):
                 exporter.write_exports([], Path(root), 'test')
             self.assertEqual(paths[0].read_bytes(), before)
+
+    def test_lost_source_link_cannot_silently_become_a_missing_note(self):
+        records = exporter.parse_note_html('<p>Vocabulary</p><p>readiness: <code>n. meaning</code></p>')
+        with self.assertRaises(exporter.ExportError):
+            exporter.validate_records(records, 'Vocabulary')
