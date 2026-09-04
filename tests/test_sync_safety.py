@@ -21,6 +21,7 @@ class SourceIdentityTests(unittest.TestCase):
     def test_invalid_or_ambiguous_link_is_rejected(self):
         for value in ['https://example.org/?annotation=ANN',
                       'zotero://open-pdf/library/items/ATT',
+                      'zotero://open-pdf/library/items/ATT?annotation=&annotation=A',
                       'zotero://open-pdf/library/items/ATT?annotation=A&annotation=B']:
             self.assertIsNone(source_identity(value))
 

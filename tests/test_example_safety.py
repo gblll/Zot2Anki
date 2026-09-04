@@ -27,6 +27,14 @@ class ExampleSafetyTests(unittest.TestCase):
                 self.assertEqual(request.call_count, 4)
             self.assertFalse(path.exists())
 
+    def test_distinct_terms_do_not_share_a_cache_entry(self):
+        with tempfile.TemporaryDirectory() as root:
+            client = examples.AcademicExampleClient(Path(root) / 'cache.json')
+            with patch.object(client, '_crossref', side_effect=lambda term: examples.ExampleCandidate(term, 'online')) as request:
+                self.assertEqual(client.find('C++').text, 'C++')
+                self.assertEqual(client.find('C').text, 'C')
+                self.assertEqual(request.call_count, 2)
+
     def test_positive_negative_expiry_and_refresh(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / 'cache.json'

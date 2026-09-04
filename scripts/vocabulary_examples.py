@@ -17,10 +17,10 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 try:
-    from .source_identity import source_identity
+    from .source_identity import source_identity, word_identity
     from .sync_storage import atomic_json
 except ImportError:
-    from source_identity import source_identity
+    from source_identity import source_identity, word_identity
     from sync_storage import atomic_json
 
 
@@ -258,7 +258,7 @@ def _normalized_with_map(value: str) -> tuple[str, list[int]]:
 def find_term_span(text: str, term: str) -> tuple[int, int] | None:
     normalized_text, positions = _normalized_with_map(text)
     normalized_term, _ = _normalized_with_map(html.unescape(term))
-    if not normalized_term:
+    if not normalized_term.strip():
         return None
     pattern = r'(?<!\w)' + r'\s+'.join(re.escape(part) for part in normalized_term.split()) + r'(?!\w)'
     match = re.search(pattern, normalized_text)
@@ -529,7 +529,7 @@ class AcademicExampleClient:
         return None
 
     def find(self, term: str) -> ExampleCandidate | None:
-        key = normalize_for_match(term)
+        key = word_identity(term)
         cached = self.cache.get(key)
         if not self.refresh and isinstance(cached, dict) and cached.get('status') in ('found', 'empty'):
             try:

@@ -11,7 +11,7 @@ def source_identity(href: str) -> str | None:
         if url.scheme != 'zotero' or url.netloc != 'open-pdf' or url.fragment:
             return None
         match = re.fullmatch(r'/(library|groups/[0-9]+)/items/([A-Za-z0-9]+)', url.path)
-        keys = parse_qs(url.query).get('annotation', [])
+        keys = parse_qs(url.query, keep_blank_values=True).get('annotation', [])
         if not match or len(keys) != 1 or not re.fullmatch(r'[A-Za-z0-9]+', keys[0]):
             return None
         return f'{match[1]}/{match[2].upper()}/{keys[0].upper()}'
