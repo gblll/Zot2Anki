@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- License original Zot2Anki code and documentation under MIT, copyright 2026 gblll.
+- Preserve third-party license terms, include Anki's license notice and the AGPL v3 text, and explain the obligations of distributing a combined program using the Anki/PyMuPDF dependencies.
+- Include license files in the source ZIP allowlist. Existing v0.2.0-rc.1 assets and tag are unchanged; the final release must be rebuilt and validated from its exact commit.
+- 原创代码和文档采用 MIT；保留第三方许可与相应 AGPL 义务，并将许可文件纳入发行包。旧 GitHub 对象仍需清理，公开发行尚未完成。
+
 ## 0.2.0-rc.1
 
 Private Windows pre-release candidate; not a stable or public release.
@@ -13,10 +20,10 @@ Private Windows pre-release candidate; not a stable or public release.
 - Add Windows synthetic CI, original audit regressions, raw APKG attack fixtures, PDF extraction, recovery faults and clean-install/package checks.
 - Add bilingual installation/recovery/sharing guidance and third-party notices. Keep legacy plugin source/tests without an XPI asset.
 
-### Unresolved release gates
+### Release gates when this candidate was prepared
 
-The repository remains private. Known old GitHub objects and the choice of a project license still block public distribution. Support contact is only drafted locally. No main merge, public release or repository visibility change is part of this candidate.
+When v0.2.0-rc.1 was prepared, the repository remained private, known old GitHub objects and the unselected project license blocked public distribution, and the support request was a local draft. This candidate did not merge main, publish a release or change repository visibility. See Unreleased above for subsequent licensing changes.
 
 ### 中文说明
 
-本次补齐来源归属、冲突预检、一致性备份、副本提交、提交后恢复、分享允许名单、例句与缓存、固定运行环境、Windows CI 和双语文档。旧插件保留源码与测试，不附 XPI。旧 GitHub 对象和项目许可证仍是公开发行门禁，本次仅准备私有预发布草稿。
+本次补齐来源归属、冲突预检、一致性备份、副本提交、提交后恢复、分享允许名单、例句与缓存、固定运行环境、Windows CI 和双语文档。旧插件保留源码与测试，不附 XPI。制作此候选版时，旧 GitHub 对象和未选择的项目许可证阻止公开发行，仅准备私有预发布草稿；后续许可调整见上方 Unreleased。

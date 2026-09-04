@@ -27,7 +27,7 @@ def release_files(commit='HEAD'):
     for name in files:
         path = PurePosixPath(name)
         if (path.is_absolute() or '..' in path.parts or set(path.parts) & FORBIDDEN or '\\' in name or
-                name not in tracked or (path.suffix not in SUFFIXES and name not in ('VERSION', '.gitignore')) or
+                name not in tracked or (path.suffix not in SUFFIXES and name not in ('VERSION', '.gitignore', 'LICENSE')) or
                 'local.' in path.name or path.name == 'config.local.json'):
             raise RuntimeError('Disallowed release entry: ' + name)
     return sha, files

@@ -5,7 +5,7 @@ Status: v0.2.0-rc.1, private release candidate. Regression results do not consti
 ## Remaining gates / 剩余门禁
 
 - **Public distribution is blocked.** Known unreferenced GitHub commit objects remain accessible to an authenticated owner after the history cleanup. A sanitized support request is prepared locally; no request is sent, history is not force-pushed, and repository visibility stays private. Server-side removal must be resolved before public distribution.
-- No project open-source license has been selected. Third-party notices are supplied separately. Python, Anki and PyMuPDF runtimes are not bundled.
+- Original project code is now licensed under [MIT](LICENSE). The existing v0.2.0-rc.1 draft assets predate this change. Third-party licenses and applicable AGPL obligations remain in effect; see [third-party notices](THIRD_PARTY_NOTICES.md). Python, Anki and PyMuPDF runtimes are not bundled.
 - Validated runtime: Windows x64, Python 3.13, Anki 26.5, PyMuPDF 1.28.2; local NTFS. Other platforms, runtime combinations, network/cloud-synced profiles and FAT/exFAT output folders are outside RC acceptance.
 - One Zotero Note per collection. Source switching, splits, merges, ambiguous historical adoption and missing owned notes that were manually deleted require manual resolution. The RC refuses to guess.
 - Keep Anki/Zotero closed throughout sync. A collection lock cannot prevent unrelated tools from writing. Disk faults or later changes to the committed DB may require manual recovery; never blindly resync to finish exports.
@@ -14,7 +14,7 @@ Status: v0.2.0-rc.1, private release candidate. Regression results do not consti
 - Scanned PDFs need external OCR. Unusual pronunciation and incomplete context remain visible as review items.
 - `--dry-run` can create private reports, snapshots, TSVs and cache entries, but never commits Anki. Existing missing entries continue to count toward the large-removal threshold.
 
-公开发行仍受旧 GitHub 对象和项目许可证选择的限制。本次只能准备私有 Draft Pre-release。RC 的平台、来源绑定、冲突处理、恢复、分享与 PDF 边界如上；不包含插件实机或移动端兼容承诺。
+原创代码已选择 MIT，第三方条款仍须遵守。公开发行仍需处理旧 GitHub 对象，并为最终提交重建和验证发行附件；现有 RC 保持私有草稿。RC 的平台、来源绑定、冲突处理、恢复、分享与 PDF 边界如上；不包含插件实机或移动端兼容承诺。
 
 ## Fixed with regressions / 已有回归验证的修复
 

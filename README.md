@@ -84,4 +84,10 @@ node --test tests/core.test.js
 
 Windows CI uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
 
-No project open-source license has been chosen. Previously exposed, unreferenced GitHub objects remain a **public-release blocker** until resolved. This candidate keeps the repository private and is prepared only as a Draft Pre-release; main is not merged and the draft is not published.
+Known unreferenced GitHub objects containing personal information remain a **public-release blocker** until resolved. The repository stays private while server-side cleanup is pending. The existing v0.2.0-rc.1 draft and its assets predate the licensing changes below; a final release requires rebuilt assets and acceptance for its exact commit.
+
+## License
+
+Zot2Anki's original code and documentation are licensed under the [MIT License](LICENSE), copyright 2026 gblll. Third-party code and dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+The current implementation directly imports the Anki Python backend and PyMuPDF. MIT does not replace their AGPL or other applicable terms. Distribution of a combined program must comply with the applicable AGPL conditions, including corresponding-source and notice requirements. Separately installing dependencies does not by itself remove those obligations. This repository does not grant rights to users' documents or learning materials.
