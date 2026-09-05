@@ -2,6 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts import sync_vocabulary as sync
 from scripts import sync_plan
@@ -66,6 +67,23 @@ class IdentityTests(unittest.TestCase):
             with self.assertRaises(sync_plan.PlanError):
                 self.run_sync(cards)
             self.assertEqual(self.col.db.all('select * from notes'), before)
+
+    def test_tag_order_does_not_write_unchanged_notes(self):
+        entry = card('one', 'A')
+        entry.tags = ['Zotero2Anki', 'NeedsReview', 'NoExample']
+        self.run_sync([entry])
+        note_id = self.col.find_notes('one')[0]
+        note = self.col.get_note(note_id)
+        note.add_tag('personal')
+        self.col.update_note(note)
+        before = self.col.db.all('select * from notes order by id')
+        with patch.object(self.col, 'update_note', wraps=self.col.update_note) as update:
+            result = self.run_sync([entry])
+        self.assertEqual(result['updated'], 0)
+        self.assertEqual(result['unchanged'], 1)
+        update.assert_not_called()
+        self.assertEqual(self.col.db.all('select * from notes order by id'), before)
+        self.assertIn('personal', self.col.get_note(note_id).tags)
 
     def test_unowned_notes_are_neither_word_matched_nor_missing(self):
         private = self.col.new_note(self.model)

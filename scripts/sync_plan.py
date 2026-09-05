@@ -114,7 +114,8 @@ def execute_plan(collection, cards, plan, model, deck_id):
               'added': 0, 'updated': 0, 'unchanged': 0, 'marked_missing': 0, 'restored': 0}
     for card, nid, sources in zip(cards, plan['matches'], plan['sources']):
         note = collection.get_note(nid) if nid is not None else collection.new_note(model)
-        before = (tuple(note.fields), tuple(note.tags))
+        # Anki canonicalizes tag order when saving. Order alone is not a change.
+        before = (tuple(note.fields), tuple(sorted(note.tags)))
         missing_before = 'MissingFromZotero' in note.tags
         for name, value in zip(FIELDS[:6], [escaped_word(card.word), card.symbol_html, card.chn_html,
                                           card.example_html, card.source_html, ' '.join(card.zotero_keys)]):
@@ -123,7 +124,7 @@ def execute_plan(collection, cards, plan, model, deck_id):
         if nid is None:
             collection.add_note(note, deck_id)
             counts['added'] += 1
-        elif before != (tuple(note.fields), tuple(note.tags)):
+        elif before != (tuple(note.fields), tuple(sorted(note.tags))):
             collection.update_note(note)
             counts['updated'] += 1
         else:

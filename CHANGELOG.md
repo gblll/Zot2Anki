@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Ignore Anki's tag ordering when detecting content changes, preventing repeated updates of unchanged notes while preserving personal tags.
 - Integrate the RC hardening and MIT licensing changes into main so the default launcher supports Check, DryRun and recovery. Existing draft tags and assets remain unchanged.
 - Update the release gate: the GitHub Support cleanup request has been submitted; verified server-side cleanup is still pending.
 - License original Zot2Anki code and documentation under MIT, copyright 2026 gblll.
