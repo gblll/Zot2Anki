@@ -4,7 +4,7 @@ Status: v0.2.0-rc.1, private release candidate. Regression results do not consti
 
 ## Remaining gates / 剩余门禁
 
-- **Public distribution is blocked.** Known unreferenced GitHub commit objects remain accessible to an authenticated owner after the history cleanup. A sanitized support request is prepared locally; no request is sent, history is not force-pushed, and repository visibility stays private. Server-side removal must be resolved before public distribution.
+- **Public distribution is blocked.** A sanitized GitHub Support request has been submitted to remove the known old commit objects. Server-side cleanup is not yet confirmed; repository visibility stays private until the outcome is verified. The application and MIT licensing changes are integrated into main, but the existing draft tag and assets remain at their original revision. Rebuild and validate final assets before public distribution.
 - Original project code is now licensed under [MIT](LICENSE). The existing v0.2.0-rc.1 draft assets predate this change. Third-party licenses and applicable AGPL obligations remain in effect; see [third-party notices](THIRD_PARTY_NOTICES.md). Python, Anki and PyMuPDF runtimes are not bundled.
 - Validated runtime: Windows x64, Python 3.13, Anki 26.5, PyMuPDF 1.28.2; local NTFS. Other platforms, runtime combinations, network/cloud-synced profiles and FAT/exFAT output folders are outside RC acceptance.
 - One Zotero Note per collection. Source switching, splits, merges, ambiguous historical adoption and missing owned notes that were manually deleted require manual resolution. The RC refuses to guess.

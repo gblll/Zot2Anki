@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Integrate the RC hardening and MIT licensing changes into main so the default launcher supports Check, DryRun and recovery. Existing draft tags and assets remain unchanged.
+- Update the release gate: the GitHub Support cleanup request has been submitted; verified server-side cleanup is still pending.
 - License original Zot2Anki code and documentation under MIT, copyright 2026 gblll.
 - Preserve third-party license terms, include Anki's license notice and the AGPL v3 text, and explain the obligations of distributing a combined program using the Anki/PyMuPDF dependencies.
 - Include license files in the source ZIP allowlist. Existing v0.2.0-rc.1 assets and tag are unchanged; the final release must be rebuilt and validated from its exact commit.
