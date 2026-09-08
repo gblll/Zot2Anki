@@ -56,7 +56,7 @@ def inspect_zip(path):
 def build(output: Path, commit='HEAD'):
     sha, names = release_files(commit)
     version = git('show', sha + ':VERSION').decode().strip()
-    if version != '0.2.0-rc.1':
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+', version):
         raise RuntimeError('Unexpected RC version')
     output.mkdir(parents=True, exist_ok=True)
     archive_path = output / f'Zot2Anki-v{version}-windows.zip'

@@ -45,6 +45,7 @@ tests/clean_install.py
 tests/core.test.js
 tests/fixtures.py
 tests/integration_anki.py
+tests/test_build_release.py
 tests/test_example_safety.py
 tests/test_export_vocabulary_note.py
 tests/test_launcher.py

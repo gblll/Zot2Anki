@@ -44,4 +44,5 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           ./.venv/Scripts/python.exe -m pip download --require-hashes --only-binary=:all: --no-deps -r requirements.txt --dest dist/wheelhouse
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ./.venv/Scripts/python.exe tests/clean_install.py dist/ci-release/Zot2Anki-v0.2.0-rc.1-windows.zip --wheelhouse dist/wheelhouse --anki-packages "$env:ZOT2ANKI_TEST_ANKI_PACKAGES" --report dist/ci-install.json
+          $releaseVersion = (Get-Content VERSION -Raw).Trim()
+          ./.venv/Scripts/python.exe tests/clean_install.py "dist/ci-release/Zot2Anki-v$releaseVersion-windows.zip" --wheelhouse dist/wheelhouse --anki-packages "$env:ZOT2ANKI_TEST_ANKI_PACKAGES" --report dist/ci-install.json

@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**v0.2.0-rc.1 — private Windows pre-release candidate.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. This is not a stable or public release.
+**v0.2.0-rc.2 — private Windows pre-release candidate.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. This is not a stable or public release.
 
 ## Install
 
@@ -84,7 +84,7 @@ node --test tests/core.test.js
 
 Windows CI uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
 
-Known unreferenced GitHub objects containing personal information remain a **public-release blocker** until resolved. The repository stays private while server-side cleanup is pending. The existing v0.2.0-rc.1 draft and its assets predate the licensing changes below; a final release requires rebuilt assets and acceptance for its exact commit.
+GitHub Support confirmed removal of unreferenced commits on 2026-09-07. On 2026-09-08, both known affected commit pages returned 404 in an authenticated browser; this verifies those two pages, not every possible historical cache. The repository remains private. RC.2 includes the licensing and tag-order fixes and requires rebuilt assets and acceptance for its exact commit. The original rc.1 tag and draft remain unchanged.
 
 ## License
 

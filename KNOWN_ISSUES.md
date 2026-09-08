@@ -1,11 +1,11 @@
 # Known limitations / 已知限制
 
-Status: v0.2.0-rc.1, private release candidate. Regression results do not constitute a stable-version guarantee.
+Status: v0.2.0-rc.2, private release candidate. Regression results do not constitute a stable-version guarantee.
 
 ## Remaining gates / 剩余门禁
 
-- **Public distribution is blocked.** A sanitized GitHub Support request has been submitted to remove the known old commit objects. Server-side cleanup is not yet confirmed; repository visibility stays private until the outcome is verified. The application and MIT licensing changes are integrated into main, but the existing draft tag and assets remain at their original revision. Rebuild and validate final assets before public distribution.
-- Original project code is now licensed under [MIT](LICENSE). The existing v0.2.0-rc.1 draft assets predate this change. Third-party licenses and applicable AGPL obligations remain in effect; see [third-party notices](THIRD_PARTY_NOTICES.md). Python, Anki and PyMuPDF runtimes are not bundled.
+- GitHub Support confirmed removal of unreferenced commits on 2026-09-07. Authenticated browser checks on 2026-09-08 showed 404 for both known affected commit pages. This closes the known-object cleanup gate within that scope; it is not a comprehensive cache audit. The repository remains private and rc.2 is prepared only as a Draft Pre-release. Public distribution still requires a separate release decision and exact-commit asset acceptance.
+- Original project code is now licensed under [MIT](LICENSE). The preserved v0.2.0-rc.1 draft assets predate this change; rc.2 includes the license files. Third-party licenses and applicable AGPL obligations remain in effect; see [third-party notices](THIRD_PARTY_NOTICES.md). Python, Anki and PyMuPDF runtimes are not bundled.
 - Validated runtime: Windows x64, Python 3.13, Anki 26.5, PyMuPDF 1.28.2; local NTFS. Other platforms, runtime combinations, network/cloud-synced profiles and FAT/exFAT output folders are outside RC acceptance.
 - One Zotero Note per collection. Source switching, splits, merges, ambiguous historical adoption and missing owned notes that were manually deleted require manual resolution. The RC refuses to guess.
 - Keep Anki/Zotero closed throughout sync. A collection lock cannot prevent unrelated tools from writing. Disk faults or later changes to the committed DB may require manual recovery; never blindly resync to finish exports.
@@ -14,7 +14,7 @@ Status: v0.2.0-rc.1, private release candidate. Regression results do not consti
 - Scanned PDFs need external OCR. Unusual pronunciation and incomplete context remain visible as review items.
 - `--dry-run` can create private reports, snapshots, TSVs and cache entries, but never commits Anki. Existing missing entries continue to count toward the large-removal threshold.
 
-原创代码已选择 MIT，第三方条款仍须遵守。公开发行仍需处理旧 GitHub 对象，并为最终提交重建和验证发行附件；现有 RC 保持私有草稿。RC 的平台、来源绑定、冲突处理、恢复、分享与 PDF 边界如上；不包含插件实机或移动端兼容承诺。
+原创代码已选择 MIT，第三方条款仍须遵守。GitHub 已确认清理未引用提交，两个已知旧提交页面经登录核验均显示 404；该结论限于已核验范围。rc.2 仍需准确提交对应的发行验收，并保持私有草稿；公开发布另行决定。RC 的平台、来源绑定、冲突处理、恢复、分享与 PDF 边界如上；不包含插件实机或移动端兼容承诺。
 
 ## Fixed with regressions / 已有回归验证的修复
 

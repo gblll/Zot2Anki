@@ -1,14 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.2.0-rc.2
+
+Private Windows pre-release candidate; the rc.1 tag and draft are preserved.
+
+- Read RC versions from the target commit and derive CI package paths from VERSION.
+- Confirm known-object cleanup: GitHub Support reported removal on 2026-09-07; authenticated browser checks on 2026-09-08 returned 404 for both known affected commit pages. This does not claim a comprehensive cache audit.
 
 - Ignore Anki's tag ordering when detecting content changes, preventing repeated updates of unchanged notes while preserving personal tags.
 - Integrate the RC hardening and MIT licensing changes into main so the default launcher supports Check, DryRun and recovery. Existing draft tags and assets remain unchanged.
-- Update the release gate: the GitHub Support cleanup request has been submitted; verified server-side cleanup is still pending.
 - License original Zot2Anki code and documentation under MIT, copyright 2026 gblll.
 - Preserve third-party license terms, include Anki's license notice and the AGPL v3 text, and explain the obligations of distributing a combined program using the Anki/PyMuPDF dependencies.
 - Include license files in the source ZIP allowlist. Existing v0.2.0-rc.1 assets and tag are unchanged; the final release must be rebuilt and validated from its exact commit.
-- 原创代码和文档采用 MIT；保留第三方许可与相应 AGPL 义务，并将许可文件纳入发行包。旧 GitHub 对象仍需清理，公开发行尚未完成。
+- 原创代码和文档采用 MIT；保留第三方许可与相应 AGPL 义务，并将许可文件纳入发行包。已确认清理并核验两个已知旧提交页面为 404；rc.2 保持私有草稿，公开发行尚未完成。
 
 ## 0.2.0-rc.1
 
@@ -25,7 +29,7 @@ Private Windows pre-release candidate; not a stable or public release.
 
 ### Release gates when this candidate was prepared
 
-When v0.2.0-rc.1 was prepared, the repository remained private, known old GitHub objects and the unselected project license blocked public distribution, and the support request was a local draft. This candidate did not merge main, publish a release or change repository visibility. See Unreleased above for subsequent licensing changes.
+When v0.2.0-rc.1 was prepared, the repository remained private, known old GitHub objects and the unselected project license blocked public distribution, and the support request was a local draft. This candidate did not merge main, publish a release or change repository visibility. See 0.2.0-rc.2 above for subsequent licensing changes.
 
 ### 中文说明
 
