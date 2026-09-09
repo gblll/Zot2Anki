@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0-rc.3
+
+Windows pre-release candidate prepared as a draft in the public repository. Existing rc.1 and rc.2 tags and assets are preserved.
+
+- 期刊格式改为无括号斜体，按缩写词补齐句点（`Nat. Commun.`），保留完整单词和首字母缩写。
+
+- 原文例句与来源链接增加 Zotero 期刊缩写，缺失时回退期刊全名；支持主题颜色及长标题换行。
+- 保持在线出处和 clean 分享允许名单，补充期刊显示、旧卡升级、复习记录保留与重复同步回归验证。
+- 本轮按准确提交完成合成数据、Windows CI 和全新安装验收；结果随发行附件提供，不沿用历史真实资料验收结论。
+- 仓库已公开，rc.2 于 2026-09-08 公开预发布；修正文档中的旧准备状态，rc.3 发行条目保持草稿。
+
 ## 0.2.0-rc.2
 
 Private Windows pre-release candidate; the rc.1 tag and draft are preserved.

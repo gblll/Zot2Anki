@@ -69,7 +69,7 @@ def build(output: Path, commit='HEAD'):
             raise RuntimeError('Machine path in release: ' + name)
         if re.search(r'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY', text):
             raise RuntimeError('Possible credential in release: ' + name)
-    manifest = {'version': version, 'commit': sha, 'private_prerelease': True,
+    manifest = {'version': version, 'commit': sha, 'private_prerelease': False,
                 'files': {name: hashlib.sha256(value).hexdigest() for name, value in files.items()}}
     files['RELEASE-MANIFEST.json'] = (json.dumps(manifest, indent=2) + '\n').encode()
     epoch = int(git('show', '-s', '--format=%ct', sha).decode())

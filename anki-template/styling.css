@@ -335,3 +335,18 @@ body.night_mode .z2a-notes { color: #ff849d; }
 }
 
 .zotero2anki-source-link:hover { background: rgba(40, 190, 160, 0.10); }
+
+.z2a-journal {
+  font-style: italic;
+  color: var(--z2a-muted);
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+
+.zotero2anki-source-link {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.z2a-example-meta { overflow-wrap: anywhere; }

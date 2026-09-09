@@ -48,6 +48,7 @@ tests/integration_anki.py
 tests/test_build_release.py
 tests/test_example_safety.py
 tests/test_export_vocabulary_note.py
+tests/test_journal_display.py
 tests/test_launcher.py
 tests/test_local_config.py
 tests/test_project_identity.py

@@ -36,6 +36,34 @@ MANAGED_EXAMPLE_TAGS = {
 }
 
 
+# Conservative punctuation repair, not an automatic journal abbreviation service.
+# Full words and initialisms are retained; Zotero remains the metadata source.
+_COMMON_JOURNAL_SHORT_FORMS = frozenset(
+    "Acad Adv Appl Arch Biomed Cardiol Chem Commun Comput Electr Electron Eng Environ "
+    "Flex Funct Inf Instrum Int J Lett Mater Mech Med Nat Natl Opt Pharm Phys Proc "
+    "Prog Protoc R Rep Res Rev Sci Sens Soc Struct Syst Technol Trans".casefold().split()
+)
+
+
+def punctuate_journal_abbreviation(abbreviation: str, publication_title: str = "") -> str:
+    full_words = {word.casefold() for word in re.findall(r"[A-Za-z]+", html.unescape(publication_title))}
+
+    def punctuate(match):
+        token = match.group(0)
+        word = token.casefold()
+        if token.endswith(".") or word in full_words:
+            return token
+        # IEEE, ACS, USA, npj and series labels A/B/X are not shortened words.
+        if (token.isupper() and len(token) > 1) or word == "npj":
+            return token
+        shortened = word in _COMMON_JOURNAL_SHORT_FORMS or (
+            len(token) >= 2 and any(full.startswith(word) and len(full) > len(word) for full in full_words)
+        )
+        return token + "." if shortened else token
+
+    return re.sub(r"[A-Za-z]+\.?", punctuate, " ".join(abbreviation.split()))
+
+
 @dataclass(frozen=True)
 class SourceContext:
     annotation_key: str
@@ -48,6 +76,13 @@ class SourceContext:
     item_title: str
     doi: str
     href: str
+    journal_abbreviation: str = ""
+    publication_title: str = ""
+
+    @property
+    def journal(self) -> str:
+        abbreviation = self.journal_abbreviation.strip()
+        return punctuate_journal_abbreviation(abbreviation, self.publication_title) if abbreviation else self.publication_title.strip()
 
 
 @dataclass(frozen=True)
@@ -153,6 +188,24 @@ def load_source_contexts(
                     WHERE data.itemID = attachmentData.parentItemID
                       AND field.fieldName = 'DOI'
                     LIMIT 1
+                ), ''),
+                COALESCE((
+                    SELECT value.value
+                    FROM itemData AS data
+                    JOIN fields AS field ON field.fieldID = data.fieldID
+                    JOIN itemDataValues AS value ON value.valueID = data.valueID
+                    WHERE data.itemID = attachmentData.parentItemID
+                      AND field.fieldName = 'journalAbbreviation'
+                    LIMIT 1
+                ), ''),
+                COALESCE((
+                    SELECT value.value
+                    FROM itemData AS data
+                    JOIN fields AS field ON field.fieldID = data.fieldID
+                    JOIN itemDataValues AS value ON value.valueID = data.valueID
+                    WHERE data.itemID = attachmentData.parentItemID
+                      AND field.fieldName = 'publicationTitle'
+                    LIMIT 1
                 ), '')
             FROM itemAnnotations AS annotation
             JOIN items AS ann ON ann.itemID = annotation.itemID
@@ -193,6 +246,8 @@ def load_source_contexts(
                 item_title=str(row[6] or ""),
                 doi=str(row[7] or ""),
                 href=href,
+                journal_abbreviation=str(row[8] or ""),
+                publication_title=str(row[9] or ""),
             )
     return contexts
 
@@ -405,6 +460,7 @@ class PdfExampleExtractor:
                     text=sentence,
                     kind="local_sentence",
                     title=context.item_title,
+                    journal=context.journal,
                     page_label=context.page_label,
                     doi=context.doi,
                     source_href=context.href,
@@ -417,6 +473,7 @@ class PdfExampleExtractor:
                     text=fragment,
                     kind="local_fragment",
                     title=context.item_title,
+                    journal=context.journal,
                     page_label=context.page_label,
                     doi=context.doi,
                     source_href=context.href,

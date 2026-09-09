@@ -502,11 +502,25 @@ def enrich_records_with_examples(
     }
 
 
+def _title_with_journal(title: str, journal: str) -> str:
+    title = html.escape(normalize_text(title), quote=True)
+    journal = html.escape(normalize_text(journal), quote=True)
+    if journal:
+        prefix = title + " · " if title else ""
+        return prefix + f'<span class="z2a-journal">{journal}</span>'
+    return title
+
+
 def _example_metadata(example: ExampleCandidate) -> str:
-    parts = [part for part in (example.title, example.journal, example.year) if part]
+    if example.kind in ("local_sentence", "local_fragment"):
+        parts = [_title_with_journal(example.title, example.journal)]
+        parts += [html.escape(normalize_text(example.year), quote=True)] if example.year else []
+    else:
+        parts = [html.escape(normalize_text(part), quote=True)
+                 for part in (example.title, example.journal, example.year) if part]
     if example.page_label:
-        parts.append(f"p. {example.page_label}")
-    text = " · ".join(html.escape(normalize_text(part), quote=True) for part in parts)
+        parts.append(f"p. {html.escape(normalize_text(example.page_label), quote=True)}")
+    text = " · ".join(part for part in parts if part)
     links: list[str] = []
     if example.source_href:
         links.append(
@@ -551,14 +565,15 @@ def render_sources(source_records: list[tuple[str, SourceContext | None]]) -> st
         if multiple:
             label += f" {index}"
         if context is not None:
-            detail = context.item_title
+            detail = _title_with_journal(context.item_title, context.journal)
             if context.page_label:
-                detail = f"{detail} · p. {context.page_label}" if detail else f"p. {context.page_label}"
+                page = html.escape(normalize_text(context.page_label), quote=True)
+                detail = f"{detail} · p. {page}" if detail else f"p. {page}"
             if detail:
                 label += f" · {detail}"
         links.append(
             '<a class="zotero2anki-source-link" '
-            f'href="{html.escape(href, quote=True)}">{html.escape(label, quote=True)}</a>'
+            f'href="{html.escape(href, quote=True)}">{label}</a>'
         )
     return '<div class="zotero2anki-source">' + "<br>".join(links) + "</div>"
 

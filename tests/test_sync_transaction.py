@@ -56,6 +56,51 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(len(reports), 2)
         self.assertTrue(any(r['sync']['added'] == 0 for r in reports))
 
+    def test_journal_upgrade_preserves_identity_and_is_idempotent(self):
+        import sqlite3
+        import zipfile
+        self.assertEqual(self.run_cli(), 0)
+        Collection, _ = sync._configure_anki(sync.DEFAULT_ANKI_PACKAGES)
+        col = Collection(str(self.collection))
+        try:
+            nid = col.db.scalar('select id from notes')
+            note = col.get_note(nid)
+            note['Notes'] = 'Personal note'
+            note.add_tag('PersonalTag')
+            col.update_note(note)
+            cid = col.db.scalar('select id from cards')
+            col.db.execute('update cards set reps=7,ivl=12 where id=?', cid)
+            col.db.execute('insert into revlog values (123456789,?,0,3,12,6,2500,1000,1)', cid)
+            before_cards = col.db.all('select * from cards')
+            before_reviews = col.db.all('select * from revlog')
+            guid = note.guid
+        finally:
+            col.close()
+        from contextlib import closing
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.executescript("INSERT INTO fields VALUES (2,'journalAbbreviation'); INSERT INTO itemDataValues VALUES (2,'Private Syn. J.'); INSERT INTO itemData VALUES (4,2,2);")
+        self.assertEqual(self.run_cli(), 0)
+        reports = [json.loads(p.read_text(encoding='utf-8')) for p in (self.root / 'output').glob('zot2anki-sync-*.json')]
+        report = next(r for r in reports if r['sync']['updated'] == 1)
+        col = Collection(str(self.collection))
+        try:
+            note = col.get_note(nid)
+            self.assertEqual(note.guid, guid)
+            self.assertEqual(note['Notes'], 'Personal note')
+            self.assertIn('PersonalTag', note.tags)
+            self.assertIn('>Private Syn. J.</span>', note['Source'])
+            self.assertIn('>Private Syn. J.</span>', note['Example'])
+            self.assertEqual(col.db.all('select * from cards'), before_cards)
+            self.assertEqual(col.db.all('select * from revlog'), before_reviews)
+        finally:
+            col.close()
+        for key, present in [('personal', True), ('clean', False)]:
+            with zipfile.ZipFile(report['outputs'][key + '_apkg']) as archive:
+                self.assertEqual('Private Syn. J.'.encode() in archive.read('collection.anki21'), present)
+        self.assertEqual(self.run_cli(), 0)
+        reports = [json.loads(p.read_text(encoding='utf-8')) for p in (self.root / 'output').glob('zot2anki-sync-*.json')]
+        self.assertTrue(any(r['sync']['unchanged'] == 1 and r['sync']['updated'] == 0 for r in reports))
+
     def test_dry_run_is_read_only_and_has_match_plan(self):
         self.assertEqual(self.run_cli('--dry-run'), 0)
         _, report = self.report()

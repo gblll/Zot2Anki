@@ -32,7 +32,7 @@ Build only allowlisted Git objects at a verified commit:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/build_release.py --output dist/acceptance-release
-.\.venv\Scripts\python.exe tests/clean_install.py dist/acceptance-release/Zot2Anki-v0.2.0-rc.2-windows.zip --report dist/install-acceptance.json
+.\.venv\Scripts\python.exe tests/clean_install.py dist/acceptance-release/Zot2Anki-v0.2.0-rc.3-windows.zip --report dist/install-acceptance.json
 ```
 
 The second command creates a new Chinese/space directory and `.venv`, runs setup, environment checks, dry-run and two full syncs through the extracted PowerShell launcher, and checks CMD argument forwarding. It does not select a real profile or launch Anki. To reuse a hash-verified wheel directory offline, pass `--wheelhouse <directory>`.
@@ -47,4 +47,4 @@ Invalid source records must be rejected with no commit. If the actual Note conta
 
 ## Release gate
 
-The exact release commit must pass unit/legacy tests, raw package privacy tests, clean-install verification and the Windows CI workflow. Build the ZIP from that commit's `release-files.txt`; inspect every payload entry and hash. Save a sanitized summary alongside the SHA256 list. Confirm the repository remains private and create only a Draft Pre-release. Record the 2026-09-07 Support cleanup confirmation and the 2026-09-08 authenticated 404 checks for the two known old commit pages, without claiming a comprehensive cache audit. For rc.2, preserve rc.1, fast-forward main only to the verified final commit, and bind the new tag, ZIP manifest, acceptance summary and CI to that same commit. Repository deletion, history rewrite, support messages and public publication are outside this workflow. Historical real-data acceptance belongs to rc.1 commit 1230dac and is not a new rc.2 acceptance result; rc.2 acceptance uses synthetic data only.
+The exact release commit must pass unit/legacy tests, raw package privacy tests, clean-install verification and the Windows CI workflow. Build the ZIP from that commit's `release-files.txt`; inspect every payload entry and hash. Save a sanitized summary alongside the SHA256 list. Keep the repository public and create only a Draft Pre-release. Record the 2026-09-07 Support cleanup confirmation and the 2026-09-08 authenticated 404 checks for the two known old commit pages, without claiming a comprehensive cache audit. For rc.3, preserve rc.1 and rc.2 releases, tags and assets, fast-forward main only to the verified final commit, and bind the new tag, ZIP manifest, acceptance summary and CI to that same commit. Repository visibility changes, deletion, history rewrite, support messages and publishing the draft are outside this workflow. Historical real-data acceptance belongs to rc.1 commit 1230dac and is not a new rc.3 acceptance result; rc.3 acceptance uses synthetic data only.
