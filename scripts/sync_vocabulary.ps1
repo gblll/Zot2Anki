@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$Config = "",
     [string]$Database = "",
@@ -14,6 +14,7 @@ param(
     [switch]$DryRun,
     [switch]$AllowLargeRemoval,
     [switch]$RefreshExamples,
+    [switch]$SkipInvalidSources,
     [string]$Recover = "",
     [switch]$NoOpenAnki
 )
@@ -108,7 +109,8 @@ try {
         if ($overrides[$name]) { $arguments += @("--$name", $overrides[$name]) }
     }
     foreach ($flag in @(@("no-online", $NoOnline), @("check", $Check), @("dry-run", $DryRun),
-                       @("allow-large-removal", $AllowLargeRemoval), @("refresh-examples", $RefreshExamples))) {
+                       @("allow-large-removal", $AllowLargeRemoval), @("refresh-examples", $RefreshExamples),
+                       @("skip-invalid-sources", $SkipInvalidSources))) {
         if ($flag[1]) { $arguments += "--$($flag[0])" }
     }
     # Python emits a short status and the journal path, not private report contents.

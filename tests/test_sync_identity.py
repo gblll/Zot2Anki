@@ -58,6 +58,17 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(self.col.db.all('select id,nid,queue,reps,ivl,due from cards order by id'), history_before)
         self.assertFalse(self.col.find_notes('tag:MissingFromZotero'))
 
+    def test_skipped_source_preserves_legacy_and_partially_valid_owned_notes(self):
+        self.run_sync([card('one', 'A', 'B'), card('two', 'C')])
+        skipped = [{'source': 'zotero://open-pdf/library/items/ATT?annotation=B'}]
+        before = self.col.db.all('select * from notes order by id')
+        self.run_sync([card('one', 'A'), card('two', 'C')], skipped_sources=skipped)
+        self.assertEqual(self.col.db.all('select * from notes order by id'), before)
+        # The same protection applies before an ownership ledger exists.
+        self.col.set_config(sync_plan.LEDGER_KEY, None)
+        self.run_sync([card('two', 'C')], skipped_sources=skipped)
+        self.assertEqual(self.col.db.all('select * from notes order by id'), before)
+
     def test_split_and_merge_conflicts_make_no_changes(self):
         self.run_sync([card('one', 'A', 'B'), card('two', 'C')])
         before = self.col.db.all('select * from notes')
@@ -121,13 +132,50 @@ class IdentityTests(unittest.TestCase):
             self.run_sync([card('0', 'K0')])
         self.run_sync([card('0', 'K0')], allow_large_removal=True)
 
-    def test_shared_model_migration_refuses_private_changes(self):
+    def test_migration_is_checked_before_adoption_with_private_cards(self):
+        # A card with neither the sync tag nor a source is unrelated content: it can
+        # never be adopted, so the template change must be refused up front.
         private = self.col.new_note(self.model)
         private['Word'] = 'private'
         self.col.add_note(private, self.deck)
-        plan = sync_plan.plan_sync(self.col, [card('one', 'A')], BINDING)
+        cards = [card('one', 'A')]
+        plan = sync_plan.plan_sync(self.col, cards, BINDING)
+        self.assertIn(private.id, [entry['note_id'] for entry in plan['excluded']])
+        self.assertNotIn(private.id, plan['migrated'])
         with self.assertRaises(sync_plan.PlanError):
             sync_plan.check_model_migration(self.col, plan, '{{Word}}', 'new template', '')
+
+    def test_migration_allows_a_collection_that_adoption_will_own(self):
+        # Every note is a legacy candidate, so the refresh is safe and must not be
+        # refused just because the ledger does not exist yet.
+        first = self.col.new_note(self.model)
+        first['Word'] = 'one'
+        first['Source'] = card('one', 'A').source_html
+        first.tags = ['Zotero2Anki']
+        self.col.add_note(first, self.deck)
+        cards = [card('one', 'A')]
+        plan = sync_plan.plan_sync(self.col, cards, BINDING)
+        self.assertEqual(plan['migrated'], [first.id])
+        sync_plan.check_model_migration(self.col, plan, '{{Word}}', 'new template', '')
+
+    def test_migration_allows_orphaned_legacy_entries(self):
+        # A tagged entry whose source disappeared is still this system's data: it is
+        # reported and left untouched, not treated as a private card.
+        orphan = self.col.new_note(self.model)
+        orphan['Word'] = 'chronic obstructive pulmonary disease'
+        orphan['Source'] = card('chronic', 'TNIGUU5L').source_html
+        orphan.tags = ['Zotero2Anki', 'MissingSource', 'NeedsReview']
+        self.col.add_note(orphan, self.deck)
+        plan = sync_plan.plan_sync(self.col, [card('one', 'A')], BINDING)
+        self.assertIn(orphan.id, [entry['note_id'] for entry in plan['excluded']])
+        self.assertNotIn(orphan.id, plan['migrated'])
+        sync_plan.check_model_migration(self.col, plan, '{{Word}}', 'new template', '')
+
+    def test_migration_is_skipped_when_the_template_already_matches(self):
+        plan = sync_plan.plan_sync(self.col, [card('one', 'A')], BINDING)
+        current = self.col.models.by_name(sync_plan.MODEL_NAME)
+        sync_plan.check_model_migration(
+            self.col, plan, current['tmpls'][0]['qfmt'], current['tmpls'][0]['afmt'], current['css'])
 
     def test_escaped_word_fallback_is_managed_only(self):
         self.run_sync([card('<word>', 'A')])

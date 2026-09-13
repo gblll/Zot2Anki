@@ -435,17 +435,36 @@ def enrich_records_with_examples(
     online_fallback: bool = False,
     refresh_examples: bool = False,
     strict_sources: bool = False,
-) -> dict[str, int]:
-    """Attach Zotero metadata and at most one local/online result per source record."""
+    skip_invalid_sources: bool = False,
+) -> tuple[dict[str, int], list[dict]]:
+    """Attach Zotero metadata and at most one local/online result per source record.
+
+    With ``skip_invalid_sources`` the already well-formed entries whose annotation
+    no longer resolves are reported instead of stopping the run. They are still
+    never sent to a provider, and they receive the same tags strict mode records
+    before it refuses.
+    """
 
     valid = [record for record in records if record.front and source_identity(record.href)]
+    skipped_sources: list[dict] = []
     hrefs = [record.href for record in valid]
     contexts = load_source_contexts(connection, hrefs, data_dir)
-    unresolved = [{'paragraph_index': r.index, 'word': r.front, 'source': r.href,
-                   'reason': 'annotation_not_found_or_deleted'}
-                  for r in valid if source_identity(r.href) not in contexts]
-    if strict_sources and unresolved:
-        raise ExportError(f'{len(unresolved)} 条生词来源无法对应到有效 annotation；请检查本地报告明细', conflicts=unresolved)
+    unresolved = [r for r in valid if source_identity(r.href) not in contexts]
+    if unresolved and strict_sources and not skip_invalid_sources:
+        raise ExportError(
+            f'{len(unresolved)} 条生词来源无法对应到有效 annotation；'
+            '请在 Zotero 中核对来源链接，或使用 --skip-invalid-sources 跳过并复核。',
+            conflicts=[{'paragraph_index': r.index, 'word': r.front, 'source': r.href,
+                        'reason': 'annotation_not_found_or_deleted'} for r in unresolved])
+    if skip_invalid_sources:
+        # The link itself is intact, so the rest of the note stays trustworthy:
+        # skip only these entries, tag them for review and keep the source link.
+        for record in unresolved:
+            _append_unique(record.example_tags, "MissingSource")
+            _append_unique(record.review_reasons, "annotation_not_found")
+            skipped_sources.append({'paragraph_index': record.index, 'word': record.front,
+                                    'source': record.href, 'reason': 'annotation_not_found_or_deleted'})
+        valid = [record for record in valid if record not in unresolved]
     local_sentences = 0
     local_fragments = 0
     online_sentences = 0
@@ -480,7 +499,10 @@ def enrich_records_with_examples(
                             local_sentences += 1
                         elif outcome.example.kind == "local_fragment":
                             local_fragments += 1
-            needs_online = not any(example.kind == "local_sentence" for example in record.examples)
+            # Only a source that resolved to a real annotation may reach a provider.
+            # An unresolved entry keeps its earlier MissingSource tag and stops here.
+            needs_online = (record.source_context is not None
+                            and not any(example.kind == "local_sentence" for example in record.examples))
             if needs_online and online_client is not None:
                 online = online_client.find(record.front)
                 if online is not None:
@@ -499,7 +521,7 @@ def enrich_records_with_examples(
         "local_sentences": local_sentences,
         "local_fragments": local_fragments,
         "online_sentences": online_sentences,
-    }
+    }, skipped_sources
 
 
 def _title_with_journal(title: str, journal: str) -> str:
@@ -717,7 +739,7 @@ def _definition_as_plain_text(definition_html: str) -> str:
     return normalize_text(html.unescape(value))
 
 
-def serialize_review_tsv(cards: list[Card]) -> str:
+def serialize_review_tsv(cards: list[Card], skipped_sources: list[dict] | None = None) -> str:
     lines = [
         "Word\tReasons\tOriginalDefinition\tParsedSymbol\tParsedChn\tExample\tSource\tZoteroKeys"
     ]
@@ -735,10 +757,24 @@ def serialize_review_tsv(cards: list[Card]) -> str:
             " ".join(card.zotero_keys),
         ]
         lines.append("\t".join(sanitize_tsv_cell(field) for field in fields))
+    # Skipped entries produce no card, so their source link is preserved here.
+    for entry in skipped_sources or []:
+        fields = [
+            str(entry.get("word", "")),
+            "skipped_invalid_source",
+            str(entry.get("reason", "")),
+            "",
+            "",
+            "",
+            str(entry.get("source", "")),
+            extract_annotation_key(str(entry.get("source", ""))),
+        ]
+        lines.append("\t".join(sanitize_tsv_cell(field) for field in fields))
     return "\n".join(lines) + "\n"
 
 
-def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = None) -> tuple[Path, Path]:
+def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = None,
+                  skipped_sources: list[dict] | None = None) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = timestamp or (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:12])
     if not re.fullmatch(r'[A-Za-z0-9_-]+', stamp):
@@ -747,7 +783,8 @@ def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = N
     review_path = output_dir / f"zot2anki-vocabulary-{stamp}.review.tsv"
     if vocabulary_path.exists() or review_path.exists():
         raise ExportError('输出文件已存在，禁止覆盖')
-    for path, value in ((vocabulary_path, serialize_anki_tsv(cards)), (review_path, serialize_review_tsv(cards))):
+    review = serialize_review_tsv(cards, skipped_sources)
+    for path, value in ((vocabulary_path, serialize_anki_tsv(cards)), (review_path, review)):
         with path.open('x', encoding='utf-8', newline='') as stream:
             stream.write(value)
     return vocabulary_path, review_path
@@ -778,6 +815,7 @@ def export_note(
     review_annotation_keys: list[str] | None = None,
     refresh_examples: bool = False,
     strict: bool = False,
+    skip_invalid_sources: bool = False,
 ):
     connection, connection_mode = open_database_readonly(database)
     try:
@@ -791,8 +829,9 @@ def export_note(
             if record.zotero_key.upper() in review_keys:
                 record.review_reasons.append("manual_review")
         example_stats = {}
+        skipped_sources: list[dict] = []
         if extract_examples:
-            example_stats = enrich_records_with_examples(
+            example_stats, skipped_sources = enrich_records_with_examples(
                 connection,
                 records,
                 database.expanduser().resolve().parent,
@@ -800,6 +839,7 @@ def export_note(
                 online_fallback=online_fallback,
                 refresh_examples=refresh_examples,
                 strict_sources=strict,
+                skip_invalid_sources=skip_invalid_sources,
             )
     except ExportError as exc:
         if 'note' in locals():
@@ -807,11 +847,14 @@ def export_note(
         raise
     finally:
         connection.close()
-    cards, stats = build_cards(records)
+    skipped_indexes = {entry["paragraph_index"] for entry in skipped_sources}
+    cards, stats = build_cards([record for record in records if record.index not in skipped_indexes])
     stats.update(example_stats)
-    if strict and (not cards or stats.get('missing_sources', 0)):
-        raise ExportError('解析结果为空或来源无法对应到有效 annotation，停止同步')
-    vocabulary_path, review_path = write_exports(cards, output_dir, timestamp)
+    stats['skipped_invalid_sources'] = len(skipped_sources)
+    stats['skipped_records'] = skipped_sources
+    if strict and not cards and not skipped_sources:
+        raise ExportError('解析结果为空，停止同步')
+    vocabulary_path, review_path = write_exports(cards, output_dir, timestamp, skipped_sources)
     return note, cards, stats, vocabulary_path, review_path, connection_mode
 
 
@@ -823,6 +866,8 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, help="Output directory")
     parser.add_argument("--no-examples", action="store_true", help="不读取 PDF 或生成例句")
     parser.add_argument("--no-online", action="store_true", default=None, help="只提取本地 PDF 例句，不访问开放学术 API")
+    parser.add_argument("--skip-invalid-sources", action="store_true",
+                        help="跳过来源批注已失效的条目并写入复核清单，而不是停止整次导出")
     parser.add_argument("--cache", type=Path, help="在线例句缓存路径")
     return parser
 
@@ -847,6 +892,7 @@ def main(argv: list[str] | None = None) -> int:
             online_fallback=not args.no_online,
             cache_path=args.cache,
             review_annotation_keys=args.review_annotation_keys,
+            skip_invalid_sources=args.skip_invalid_sources,
         )
     except (ExportError, sqlite3.Error, OSError, RuntimeError) as exc:
         print(f"导出失败：{exc}", file=sys.stderr)
@@ -861,7 +907,8 @@ def main(argv: list[str] | None = None) -> int:
         f"待复核 {stats['needs_review']}，跳过空段落 {stats['skipped_empty']}，"
         f"跳过无效来源 {stats['skipped_invalid_source']}，来源链接 {stats['source_links']}，"
         f"例句卡片 {stats['example_cards']}，例句 {stats['example_count']}，"
-        f"上下文片段 {stats['context_fragments']}，在线例句卡片 {stats['online_example_cards']}"
+        f"上下文片段 {stats['context_fragments']}，在线例句卡片 {stats['online_example_cards']}，"
+        f"跳过失效来源 {stats['skipped_invalid_sources']}"
     )
     print(f"Anki TSV：{vocabulary_path.resolve()}")
     print(f"复核清单：{review_path.resolve()}")

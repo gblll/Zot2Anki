@@ -174,6 +174,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-large-removal", action="store_true")
     parser.add_argument("--refresh-examples", action="store_true")
     parser.add_argument("--recover", type=Path, help="Finish output publication for a committed run journal")
+    parser.add_argument("--skip-invalid-sources", action="store_true",
+                        help="跳过来源批注已失效的条目并写入复核清单，而不是停止整次同步")
     parser.add_argument("--front", type=Path, default=local_config.ROOT / "anki-template/front.html")
     parser.add_argument("--back", type=Path, default=local_config.ROOT / "anki-template/back.html")
     parser.add_argument("--css", type=Path, default=local_config.ROOT / "anki-template/styling.css")
@@ -261,16 +263,20 @@ def main(argv: list[str] | None = None) -> int:
                 extract_examples=True, online_fallback=not args.no_online,
                 cache_path=output_dir / 'cache' / 'academic-examples.json',
                 review_annotation_keys=args.review_annotation_keys,
-                refresh_examples=args.refresh_examples, strict=True)
+                refresh_examples=args.refresh_examples, strict=True,
+                skip_invalid_sources=args.skip_invalid_sources)
             binding = {'library_id': note.library_id, 'note_key': note.key}
             state.update(binding=binding, export=export_stats, database_mode=mode)
+            # Keep skipped identities in the plan so existing notes remain untouched.
+            state['skipped_sources'] = export_stats.get('skipped_records', [])
             front, back, css = [p.read_text(encoding='utf-8') for p in (args.front, args.back, args.css)]
             with tempfile.TemporaryDirectory(prefix='.zot2anki-candidate-', dir=collection_path.parent) as temporary:
                 candidate = Path(temporary) / 'collection.anki2'
                 sync_storage.consistent_backup(backup, candidate)
                 collection = Collection(str(candidate))
                 try:
-                    plan = sync_plan.plan_sync(collection, cards, binding, allow_large_removal=args.allow_large_removal)
+                    plan = sync_plan.plan_sync(collection, cards, binding, allow_large_removal=args.allow_large_removal,
+                                               skipped_sources=state["skipped_sources"])
                     state.update(stage='planned', plan=plan, excluded=plan['excluded'])
                     sync_plan.check_model_migration(collection, plan, front, back, css)
                     sync_storage.atomic_json(report_path, state)
@@ -314,6 +320,9 @@ def main(argv: list[str] | None = None) -> int:
         sync_storage.recover_outputs(report_path)
         print('Sync complete. Report: ' + str(report_path))
         print('Updated Anki profile: ' + (state['profile'] or '(custom collection; see report)'))
+        if state.get('skipped_sources'):
+            print(f"Skipped {len(state['skipped_sources'])} invalid source(s); "
+                  'review their cards and the .review.tsv entry in the report.')
         return 0
     except Exception as exc:
         # A journal write can fail immediately after replacement. The candidate

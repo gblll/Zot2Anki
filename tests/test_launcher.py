@@ -39,7 +39,7 @@ class LauncherContractTests(unittest.TestCase):
         self.assertIn('.venv', self.sync_script)
         self.assertNotIn('Get-Command python', self.sync_script)
         self.assertIn('"--$name"', self.sync_script)
-        for flag in ('check', 'dry-run', 'allow-large-removal', 'refresh-examples'):
+        for flag in ('check', 'dry-run', 'allow-large-removal', 'refresh-examples', 'skip-invalid-sources'):
             self.assertIn(flag, self.sync_script)
 
     def test_success_requires_commit_and_known_profile(self):

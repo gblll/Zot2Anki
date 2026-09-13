@@ -23,6 +23,8 @@ node --test tests/core.test.js
 | Invalid source outbound lookup | `test_example_safety`, `test_export_vocabulary_note`: provider never sees invalid source text. |
 | Failed query cached forever | `test_example_safety`: retry after failure, separate TTLs, explicit refresh. |
 | Prefix/substring word match | `test_example_safety`, `test_vocabulary_examples`: word boundaries and PDF cross-line hyphens. |
+| One dead source link blocking healthy entries | `test_export_vocabulary_note` (`SkippedSourceTests`), `test_sync_transaction`: default refusal, opt-in skip reporting, review TSV rows and no provider query. |
+| Legacy adoption never ran, blocking every template change | `test_sync_identity`: adoption reads the Source field directly; a private card refuses the migration, an adoptable collection and a tagged orphaned entry do not. |
 
 Additional tests cover source changes, adoption, restored missing notes, repeated sync, preserved card identity/Notes/review state, clean re-import isolation, synthetic PDF extraction, default offline operation, run locks, output collisions, recovery, environment gating and applications starting before commit.
 

@@ -13,6 +13,8 @@ Status: v0.2.0-rc.3, draft pre-release candidate in a public repository. Regress
 - Voice availability, Anki mobile rendering and the old Zotero plugin lifecycle are not verified by this RC. Plugin source and tests are retained, but no XPI is released. TTS depends on available voices.
 - Scanned PDFs need external OCR. Unusual pronunciation and incomplete context remain visible as review items.
 - `--dry-run` can create private reports, snapshots, TSVs and cache entries, but never commits Anki. Existing missing entries continue to count toward the large-removal threshold.
+- A source link whose annotation was deleted in Zotero stops the whole run unless `--skip-invalid-sources` is given. That flag skips only the affected entries and reports them, but it cannot repair them: the entry is still in the Note, so its card keeps its last synchronized content until the source is restored or the entry is repaired in Zotero.
+- The shared-template check refuses only for a card that is not part of this vocabulary system. A tagged entry whose source disappeared is reported and left untouched, so a collection containing such entries can still migrate its template.
 
 原创代码已选择 MIT，第三方条款仍须遵守。GitHub 已确认清理未引用提交，两个已知旧提交页面经登录核验均显示 404；该结论限于已核验范围。仓库已公开，rc.2 已公开预发布；rc.3 按准确提交验收并准备为发行草稿。本轮只验收合成数据，不代表日常真实资料或移动端已通过验收。RC 的平台、来源绑定、冲突处理、恢复、分享与 PDF 边界如上；不包含插件实机或移动端兼容承诺。
 
@@ -31,5 +33,8 @@ Status: v0.2.0-rc.3, draft pre-release candidate in a public repository. Regress
 | Invalid source sent online / 无效来源外发 | Filter before lookup; unresolved sources never call providers. |
 | Failed request cached forever / 故障长期缓存 | Failure is not an empty success, with TTL and refresh tests. |
 | Prefix matched another word / 词边界错误 | Whole-word/phrase matching with cross-line hyphens, including negative cases. |
+| One dead link blocked every healthy entry / 一条失效链接卡死整次同步 | Default still stops; `--skip-invalid-sources` skips and reports only the affected entries; `test_export_vocabulary_note`, `test_sync_transaction`. |
+| Legacy adoption never ran, so no collection could convert / 旧笔记接管失效 | The Source field is read directly instead of via an unsupported `in` test; a private card still refuses a shared-template change; `test_sync_identity`. |
+| Invalid source could reach an online provider / 失效来源外发 | Provider lookup now requires a resolved annotation context; `test_export_vocabulary_note`. |
 
 Final release assets include a sanitized acceptance summary for the exact target commit. Consult that summary and the corresponding Windows CI run rather than assuming a draft is stable.

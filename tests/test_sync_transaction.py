@@ -27,9 +27,23 @@ class TransactionTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             return sync.main(['--config', str(self.config), *flags])
 
+    def reports(self):
+        return [(p, json.loads(p.read_text(encoding='utf-8')))
+                for p in (self.root / 'output').glob('zot2anki-sync-*.json')]
+
+    def latest(self, stage=None):
+        """Select a journal by stage, never by filename order.
+
+        Two runs in the same second share a timestamp and differ only in a random
+        suffix, so sorting by name would pick either run at random.
+        """
+        found = [(path.stat().st_mtime_ns, path, state) for path, state in self.reports()
+                 if stage is None or state.get('stage') == stage]
+        path, state = max(found, key=lambda item: item[0])[1:]
+        return path, state
+
     def report(self):
-        paths = list((self.root / 'output').glob('zot2anki-sync-*.json'))
-        return paths[-1], json.loads(paths[-1].read_text(encoding='utf-8'))
+        return self.latest()
 
     def test_full_offline_cli_and_backup_restore(self):
         with patch('urllib.request.urlopen', side_effect=AssertionError('Offline run made a network request')):
@@ -63,7 +77,7 @@ class TransactionTests(unittest.TestCase):
         Collection, _ = sync._configure_anki(sync.DEFAULT_ANKI_PACKAGES)
         col = Collection(str(self.collection))
         try:
-            nid = col.db.scalar('select id from notes')
+            nid = col.db.scalar("select id from notes where flds like 'readiness%'")
             note = col.get_note(nid)
             note['Notes'] = 'Personal note'
             note.add_tag('PersonalTag')
@@ -141,6 +155,97 @@ class TransactionTests(unittest.TestCase):
         path, report = self.report()
         self.assertTrue(report['committed'])
         storage.recover_outputs(path)
+
+    def test_dead_annotation_link_blocks_by_default_and_can_be_skipped(self):
+        import sqlite3
+        from contextlib import closing
+        # Reproduce a note whose second entry points at an annotation that no
+        # longer exists, which is the real-world case that stopped every run.
+        note_key = 'zotero://open-pdf/library/items/ATT?page=1&annotation=ANN'
+        dead_key = 'zotero://open-pdf/library/items/ATT?page=1&annotation=GONE'
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            note = (
+                f'<p><a href="{note_key}">readiness</a>: <code>n. readiness definition</code></p>'
+                f'<p><a href="{dead_key}">vanished</a>: <code>n. vanished definition</code></p>'
+            )
+            db.execute('UPDATE itemNotes SET note=? WHERE title=?', (note, 'Vocabulary'))
+            db.commit()
+
+        with self.assertRaisesRegex(sync.SyncError, '无法对应到有效 annotation'):
+            self.run_cli()
+        self.assertEqual(storage.fingerprint(self.collection), self.before)
+
+        self.assertEqual(self.run_cli('--skip-invalid-sources'), 0)
+        _, report = self.latest(stage='complete')
+        self.assertTrue(report['committed'])
+        self.assertEqual(report['stage'], 'complete')
+        self.assertEqual(report['skipped_sources'], [
+            {'paragraph_index': 1, 'word': 'vanished', 'source': dead_key,
+             'reason': 'annotation_not_found_or_deleted'},
+        ])
+        self.assertEqual(report['export']['skipped_invalid_sources'], 1)
+        # The healthy entry still syncs; the dead one is recorded, not silently lost.
+        self.assertEqual(report['sync']['added'], 1)
+        self.assertEqual(report['clean_package']['notes'], 1)
+        review = Path(report['outputs']['review_tsv']).read_text(encoding='utf-8')
+        self.assertIn('vanished\tskipped_invalid_source\tannotation_not_found_or_deleted', review)
+        self.assertIn('GONE', review)
+        # A later run without the flag must still refuse rather than drop the entry.
+        with self.assertRaises(sync.SyncError):
+            self.run_cli()
+
+    def test_skipped_existing_note_preserves_content_and_review_history(self):
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.execute("insert into items values (5, 'HEALTHY', 1)")
+            db.execute("insert into itemAnnotations select 5,parentItemID,text,pageLabel,position from itemAnnotations where itemID=2")
+            db.execute("update itemNotes set note=note || ?", (
+                '<p><a href="zotero://open-pdf/library/items/ATT?annotation=HEALTHY">healthy</a>: <code>adj. healthy</code></p>',))
+            db.commit()
+        self.assertEqual(self.run_cli(), 0)
+        Collection, _ = sync._configure_anki(sync.DEFAULT_ANKI_PACKAGES)
+        col = Collection(str(self.collection))
+        try:
+            nid = col.db.scalar("select id from notes where flds like 'readiness%'")
+            note = col.get_note(nid)
+            note['Notes'] = 'Personal note'
+            note.add_tag('PersonalTag')
+            col.update_note(note)
+            cid = col.db.scalar('select id from cards')
+            col.db.execute('update cards set reps=7,ivl=12 where id=?', cid)
+            col.db.execute('insert into revlog values (123456789,?,0,3,12,6,2500,1000,1)', cid)
+            before = {table: col.db.all(f'select * from {table}')
+                      for table in ('notes', 'cards', 'revlog')}
+            self.assertTrue(note['Example'])
+        finally:
+            col.close()
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.execute('insert into deletedItems values (2)')
+            db.commit()
+        # One source is now invalid. Repeated opt-in runs must preserve the
+        # complete note row, not merely its ID or personal Notes field.
+        for _ in range(2):
+            self.assertEqual(self.run_cli('--skip-invalid-sources'), 0)
+            _, report = self.latest(stage='complete')
+            self.assertEqual(report['plan']['preserved'], [nid])
+            self.assertEqual(report['sync']['updated'], 0)
+            self.assertEqual(report['sync']['marked_missing'], 0)
+            self.assertEqual(report['clean_package']['notes'], 1)
+            col = Collection(str(self.collection))
+            try:
+                for table, rows in before.items():
+                    self.assertEqual(col.db.all(f'select * from {table}'), rows, table)
+            finally:
+                col.close()
+
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.execute('insert into deletedItems values (5)')
+            db.commit()
+        fingerprint = storage.fingerprint(self.collection)
+        with self.assertRaisesRegex(sync.SyncError, '解析结果为空'):
+            self.run_cli('--skip-invalid-sources')
+        self.assertEqual(storage.fingerprint(self.collection), fingerprint)
 
     def test_unsafe_repository_output_is_rejected(self):
         with self.assertRaises(sync.SyncError):

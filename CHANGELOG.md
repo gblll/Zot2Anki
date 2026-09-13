@@ -2,6 +2,16 @@
 
 ## 0.2.0-rc.3
 
+- Add `--skip-invalid-sources` / `-SkipInvalidSources`. A source link whose annotation was deleted in Zotero still stops the run by default, but this flag skips only the affected entries, flags them for review in the report, records each word, dead link and reason under `skipped_sources` in the run journal, and appends them to the review TSV. All other entries sync normally; a skipped entry keeps its existing card untouched, with content, identity and review history intact.
+
+- 新增 `--skip-invalid-sources` / `-SkipInvalidSources`。批注已删除的来源链接默认仍会停止整次同步，该开关只跳过受影响的条目：标记待复核，在运行日志的 `skipped_sources` 与复核 TSV 中逐条记录单词、失效链接和原因，其余条目照常同步；被跳过条目的卡片保持原样，内容、身份与复习历史都不改动。
+- Fix: legacy adoption never ran, because `'Source' in note` is always false for an Anki note. Every existing card was therefore treated as unowned, which also made the shared-template check refuse every later run. Adoption now reads the field directly, so an existing collection converts on the first successful run.
+- 修复：旧笔记接管从未生效——Anki 笔记对象不支持用 `in` 判断字段名，导致既有卡片全部被当成未托管，共享模板检查也随之拒绝后续每次运行。现在直接读取字段，既有 collection 可在首次成功运行时完成接管。
+- Fix: an entry whose source did not resolve to a live annotation could still be sent to an online provider. Provider lookup now requires a resolved annotation context, so unresolved text never leaves the machine.
+- 修复：来源未能对应到有效批注的条目仍可能被发送到在线提供方。现在只有已解析到批注上下文的条目才会外发查询。
+- Fix: the shared-template check now refuses only for a card that is not part of this vocabulary system. Tagged legacy entries whose source disappeared are reported and left untouched instead of blocking the run forever.
+- 修复：共享模板检查现在只对不属于本生词系统的卡片拒绝。带标签但来源已失效的历史条目改为列入报告并保持不动，不再永久阻塞运行。
+
 Windows pre-release candidate prepared as a draft in the public repository. Existing rc.1 and rc.2 tags and assets are preserved.
 
 - 期刊格式改为无括号斜体，按缩写词补齐句点（`Nat. Commun.`），保留完整单词和首字母缩写。

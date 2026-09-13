@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts import export_vocabulary_note as exporter
+from scripts.vocabulary_examples import ExtractionOutcome
 
 
 class VocabularyNoteParserTests(unittest.TestCase):
@@ -187,7 +188,7 @@ class ExampleFallbackTests(unittest.TestCase):
         ):
             connection = sqlite3.connect(":memory:")
             self.addCleanup(connection.close)
-            stats = exporter.enrich_records_with_examples(
+            stats, skipped = exporter.enrich_records_with_examples(
                 connection,
                 [record],
                 Path("."),
@@ -198,6 +199,7 @@ class ExampleFallbackTests(unittest.TestCase):
         self.assertNotIn("OnlineExample", record.example_tags)
         self.assertEqual(record.examples, [])
         self.assertEqual(stats["missing_sources"], 1)
+        self.assertEqual(skipped, [])
 
 
 class SerializationReviewTests(unittest.TestCase):
@@ -229,6 +231,115 @@ class SerializationReviewTests(unittest.TestCase):
             "\ncheck\tdefinition_without_code\tline one / line two\tUK /tʃek/\tline one / line two\texample\t",
             output,
         )
+
+
+class SkippedSourceTests(unittest.TestCase):
+    """A dead annotation link must stop the run by default, or skip one entry on demand."""
+
+    URL = "zotero://open-pdf/library/items/ATT?page=1&annotation={key}"
+
+    def setUp(self):
+        from tests.fixtures import create_source
+        self._temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temp.cleanup)
+        self.root = Path(self._temp.name)
+        self.database = create_source(self.root)
+        self.valid = exporter.ParagraphRecord(
+            index=0, front="readiness", href=self.URL.format(key="ANN"),
+            definition_html="n. readiness", code_count=1, link_count=1)
+        self.dead = exporter.ParagraphRecord(
+            index=1, front="vanished", href=self.URL.format(key="GONE"),
+            definition_html="n. vanished", code_count=1, link_count=1)
+
+    class _StubExtractor:
+        """The resolved record still resolves; only PDF extraction is stubbed."""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def extract(self, _context, _term):
+            return ExtractionOutcome(None, (), ("stubbed",))
+
+    def _enrich(self, records, **options):
+        connection, _mode = exporter.open_database_readonly(self.database)
+        self.addCleanup(connection.close)
+        with patch.object(exporter, "PdfExampleExtractor", self._StubExtractor):
+            return exporter.enrich_records_with_examples(
+                connection, records, self.root,
+                cache_path=self.root / "cache.json", online_fallback=False, **options)
+
+    def test_default_still_stops_the_whole_run(self):
+        with self.assertRaisesRegex(exporter.ExportError, "无法对应到有效 annotation"):
+            self._enrich([self.valid, self.dead], strict_sources=True)
+
+    def test_skip_reports_the_dead_entry_and_keeps_the_rest(self):
+        stats, skipped = self._enrich([self.valid, self.dead], strict_sources=True,
+                                      skip_invalid_sources=True)
+        self.assertEqual(stats["resolved_contexts"], 1)
+        self.assertEqual(stats["missing_sources"], 0)
+        self.assertEqual([entry["word"] for entry in skipped], ["vanished"])
+        self.assertEqual(skipped[0]["reason"], "annotation_not_found_or_deleted")
+        self.assertEqual(skipped[0]["source"], self.URL.format(key="GONE"))
+        self.assertIn("MissingSource", self.dead.example_tags)
+        self.assertIn("annotation_not_found", self.dead.review_reasons)
+        self.assertEqual(self.dead.examples, [])
+
+    def test_malformed_source_never_reaches_lookup_or_extractor(self):
+        # source_identity() rejects an unusable annotation key before any work.
+        record = exporter.ParagraphRecord(
+            index=0, front="broken", href="zotero://open-pdf/library/items/ATT?annotation=???",
+            definition_html="n. broken", code_count=1, link_count=1)
+        with patch.object(exporter, "load_source_contexts", return_value={}) as lookup, \
+                patch.object(exporter, "PdfExampleExtractor") as extractor:
+            stats, skipped = exporter.enrich_records_with_examples(
+                None, [record], self.root, cache_path=self.root / "cache.json",
+                strict_sources=True, skip_invalid_sources=True)
+        self.assertEqual(skipped, [])
+        self.assertEqual(stats["resolved_contexts"], 0)
+        # Nothing to resolve, and no extraction for a malformed source.
+        self.assertEqual(lookup.call_args.args[1], [])
+        extractor.return_value.__enter__.return_value.extract.assert_not_called()
+
+    def test_skipped_entries_appear_in_the_review_file(self):
+        with tempfile.TemporaryDirectory() as output:
+            cards, _stats = exporter.build_cards([self.valid])
+            _vocabulary, review = exporter.write_exports(
+                cards, Path(output), "regression",
+                [{"word": "vanished", "reason": "annotation_not_found_or_deleted",
+                  "source": self.URL.format(key="GONE")}])
+            lines = review.read_text(encoding="utf-8").splitlines()
+        self.assertIn("vanished\tskipped_invalid_source\tannotation_not_found_or_deleted", lines[-1])
+        self.assertTrue(lines[-1].endswith("GONE"))
+
+    def test_online_lookup_never_receives_an_unresolved_word(self):
+        class Recording:
+            """Records every provider query; the dead entry must never appear here."""
+
+            queries = []
+
+            def __init__(self, _cache_path, **_options):
+                pass
+
+            def find(self, term):
+                Recording.queries.append(term)
+                return None
+
+        connection, _mode = exporter.open_database_readonly(self.database)
+        self.addCleanup(connection.close)
+        with patch.object(exporter, "PdfExampleExtractor", self._StubExtractor), \
+                patch.object(exporter, "AcademicExampleClient", Recording):
+            stats, skipped = exporter.enrich_records_with_examples(
+                connection, [self.valid, self.dead], self.root,
+                cache_path=self.root / "cache.json",
+                online_fallback=True, strict_sources=True, skip_invalid_sources=True)
+        self.assertEqual([entry["word"] for entry in skipped], ["vanished"])
+        self.assertNotIn("vanished", Recording.queries)
+        self.assertNotIn("OnlineExample", self.dead.example_tags)
+        self.assertNotIn("NoExample", self.dead.example_tags)
+        self.assertEqual(stats["online_sentences"], 0)
 
 
 class DatabaseTests(unittest.TestCase):

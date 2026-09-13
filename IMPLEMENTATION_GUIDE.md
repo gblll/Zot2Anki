@@ -12,7 +12,9 @@ Use one vocabulary entry per paragraph, one complete Zotero annotation link, the
 
 Group sources use `zotero://open-pdf/groups/<group-id>/items/<attachment-key>?annotation=<annotation-key>`. The identifiers above are placeholders. Library/group, attachment and annotation must resolve together in Zotero and must not be deleted. Definitions without recognized pronunciation are retained with a review flag; broken source identities cannot enter synchronization. Empty paragraphs are ignored; an initial plain paragraph matching the Note title is allowed. Other non-vocabulary text paragraphs are rejected in strict sync, because a lost source link cannot safely be distinguished from an intentional comment.
 
-生词使用一个段落、一条完整来源链接，后接释义。空段落以及首段与 Note 标题一致的普通文字可保留；其他无法识别来源的文字段落会停止同步。解析为空、链接损坏或来源已删除，不能通过 `--allow-large-removal` 绕过。音标格式异常会保留释义并标记待复核。
+A link that is well formed but whose annotation was deleted is a separate case from a damaged link. By default it also stops the run. `--skip-invalid-sources` narrows that decision to the affected entries only: each one is dropped from the update set and recorded under `skipped_sources` in the journal, and written as a `skipped_invalid_source` row in the review TSV with its word, reason and original link. Its text is still never sent to an online provider. A skipped entry is still present in the Note, so its existing card is left exactly as it is — content, identity, personal Notes and review history are untouched and it is not marked missing. Only an entry that disappears from the Note becomes `MissingFromZotero`. Existing tags are also preserved; review flags belong to the report. If no valid entries remain, synchronization stops without committing.
+
+生词使用一个段落、一条完整来源链接，后接释义。空段落以及首段与 Note 标题一致的普通文字可保留；其他无法识别来源的文字段落会停止同步。解析为空、链接损坏或来源已删除，不能通过 `--allow-large-removal` 绕过。音标格式异常会保留释义并标记待复核。若链接格式完整但批注已被删除，默认同样停止；`--skip-invalid-sources` 只跳过这些条目并在报告和复核 TSV 中逐条列出，其余条目正常同步；被跳过条目的卡片保持原样，内容与复习历史不变，也不标记缺失。只有条目从笔记中消失才会标记 `MissingFromZotero`。
 
 ## Ownership and migration / 归属与迁移
 

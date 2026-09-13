@@ -56,6 +56,7 @@ Copy-Item config.example.json config.local.json
 | `-DryRun` | `--dry-run` | 只生成匹配计划，不提交数据库。 |
 | `-AllowLargeRemoval` | `--allow-large-removal` | 仅解除大量缺失的数量保护。 |
 | `-RefreshExamples` | `--refresh-examples` | 联网已启用时，跳过缓存重新查询。 |
+| `-SkipInvalidSources` | `--skip-invalid-sources` | 跳过批注已失效的条目并写入复核报告，而不是停止整次同步。 |
 | `-NoOnline` | `--no-online` | 强制本次离线。 |
 | `-Recover <报告>` | `--recover <报告>` | 仅整理已经提交的运行产物。 |
 
@@ -63,7 +64,9 @@ Copy-Item config.example.json config.local.json
 
 ## 匹配与产物
 
-RC 每个 collection 只绑定一篇 Zotero Note。来源身份包含资料库或群组、附件及 annotation；单词回退只用于已托管笔记。拆分、合并和其他归属冲突会停止整次同步。首次迁移只接管带原同步标签、完整来源链接能唯一对应当前输入的旧笔记。归属不明项目列入报告，私人同类型笔记不更新、不标记缺失；会影响它们的共享模板迁移也会被拒绝。
+RC 每个 collection 只绑定一篇 Zotero Note。来源身份包含资料库或群组、附件及 annotation；单词回退只用于已托管笔记。拆分、合并和其他归属冲突会停止整次同步。首次迁移只接管带原同步标签、完整来源链接能唯一对应当前输入的旧笔记。归属不明项目列入报告，私人同类型笔记不更新、不标记缺失；只有会影响不属于本生词系统的卡片时，共享模板迁移才会被拒绝。
+
+来源链接所指批注已在 Zotero 中删除时，默认停止整次同步，避免把丢失的链接误当成有意评论。使用 `-SkipInvalidSources` 时只跳过这些条目：对应卡片标记待复核，报告中的 `skipped_sources` 与复核 TSV 会逐条列出单词、失效链接和原因，其余条目照常同步。被跳过的条目其原有卡片保持原样——内容、身份与复习历史都不改动，也不会标记缺失，因为该条目在笔记中依然存在。
 
 个人牌组、笔记类型、同步标签及七个字段继续使用原有 `Zotero2Anki` 身份。缺失条目只加标签，不从个人库删除。当缺失数达到 `max(5, ceil(原托管数量 × 20%))` 时默认停止。
 

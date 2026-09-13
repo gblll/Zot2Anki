@@ -56,6 +56,7 @@ A successful report identifies the updated collection. The Windows launcher open
 | `-DryRun` | `--dry-run` | Match plan without database commit. |
 | `-AllowLargeRemoval` | `--allow-large-removal` | Allow the removal-count threshold only. |
 | `-RefreshExamples` | `--refresh-examples` | Bypass online cache when online lookup is enabled. |
+| `-SkipInvalidSources` | `--skip-invalid-sources` | Skip entries whose annotation no longer resolves; report them instead of stopping. |
 | `-NoOnline` | `--no-online` | Force offline operation. |
 | `-Recover <report>` | `--recover <report>` | Finish outputs of an already committed run. |
 
@@ -63,7 +64,9 @@ Direct commands use `.venv/Scripts/python.exe scripts/sync_vocabulary.py`; the d
 
 ## Identity and outputs
 
-Each collection binds to one Zotero Note in this RC. Library/group, attachment and annotation form the source identity. Word fallback applies only to already managed notes. Splits, merges and ambiguous identities stop the entire run. Migration adopts only previously tagged notes with complete, uniquely matching source links; unowned notes are listed and left alone. Shared-template changes affecting unowned notes are refused.
+Each collection binds to one Zotero Note in this RC. Library/group, attachment and annotation form the source identity. Word fallback applies only to already managed notes. Splits, merges and ambiguous identities stop the entire run. Migration adopts only previously tagged notes with complete, uniquely matching source links; unowned notes are listed and left alone. Shared-template changes are refused only when a card that is not part of this vocabulary system would be affected.
+
+A source link whose annotation was deleted in Zotero stops the run by default, so a lost link is never mistaken for an intentional comment. `-SkipInvalidSources` instead skips exactly those entries, flags them for review in the report, and lists each word, the dead link and the reason under `skipped_sources` in the report and in the review TSV; every other entry still syncs. A skipped entry keeps its existing card exactly as it is — content, identity and review history are untouched, and the card is not marked missing, because the entry is still present in the Note. Existing tags are preserved too; if no valid entries remain, synchronization stops without committing.
 
 The personal deck, note type, sync tag and seven fields retain their historical `Zotero2Anki` identifiers. Changing those names would disconnect existing cards. Missing managed notes are tagged rather than deleted. Missing counts at or above `max(5, ceil(managed_count × 20%))` stop by default.
 

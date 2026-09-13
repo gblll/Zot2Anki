@@ -3,9 +3,9 @@ from copy import deepcopy
 import math
 
 try:
-    from .source_identity import identities_from_html, escaped_word, word_identity
+    from .source_identity import identities_from_html, escaped_word, word_identity, source_identity
 except ImportError:
-    from source_identity import identities_from_html, escaped_word, word_identity
+    from source_identity import identities_from_html, escaped_word, word_identity, source_identity
 
 LEDGER_KEY = 'zot2anki_source_binding_v1'
 MODEL_NAME = 'Zotero2Anki Vocabulary'
@@ -20,7 +20,9 @@ class PlanError(RuntimeError):
         self.conflicts = conflicts or [message]
 
 
-def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) -> dict:
+def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False, skipped_sources=()) -> dict:
+    skipped_identities = {source_identity(entry["source"]) for entry in skipped_sources}
+    skipped_identities.discard(None)
     if not cards:
         raise PlanError('解析结果为空，停止同步')
     if not binding.get('note_key') or not isinstance(binding.get('library_id'), int):
@@ -33,6 +35,10 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) ->
     owned = deepcopy(ledger['notes']) if ledger else {}
     if not set(map(int, owned)).issubset(all_ids):
         raise PlanError('托管笔记已被删除或更换类型；请恢复后重试，不能猜测归属')
+    preserved = {nid for nid, note in notes.items()
+                 if skipped_identities.intersection(
+                     owned.get(str(nid), {}).get("sources", [])
+                     or identities_from_html(note["Source"], require_all=True))}
     incoming = [identities_from_html(card.source_html, require_all=True) for card in cards]
     conflicts = []
     by_source = {}
@@ -49,7 +55,9 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) ->
         # A tag alone is insufficient: legacy links must exactly identify a
         # unique current card. Unknown history is explicitly left unowned.
         for nid, note in notes.items():
-            sources = identities_from_html(note['Source'], require_all=True) if 'Source' in note else []
+            # Anki's note does not support `in` for field names, so read the field
+            # directly; this model is required to have a Source field.
+            sources = identities_from_html(note['Source'], require_all=True)
             candidates = [i for i, values in enumerate(incoming) if sources and set(values) == set(sources)]
             if 'Zotero2Anki' in note.tags and len(candidates) == 1:
                 owned[str(nid)] = {'sources': sources, 'word': word_identity(note['Word'])}
@@ -85,17 +93,26 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False) ->
         matches.append(nid)
     if conflicts:
         raise PlanError('来源存在身份冲突；整次同步已停止', conflicts)
-    missing = sorted(set(map(int, owned)) - set(used))
+    missing = sorted(set(map(int, owned)) - set(used) - preserved)
     threshold = max(5, math.ceil(len(owned) * .20))
     if len(missing) >= threshold and not allow_large_removal:
         raise PlanError(f'缺失 {len(missing)} 条，达到保护阈值 {threshold}；确认来源完整后可使用 --allow-large-removal')
     return {'binding': binding, 'owned': owned, 'matches': matches, 'sources': incoming,
             'missing': missing, 'excluded': excluded, 'migrated': migrated,
+            'preserved': sorted(preserved),
             'conflicts': [], 'removal_threshold': threshold,
             'new_count': sum(nid is None for nid in matches)}
 
 
 def check_model_migration(collection, plan, front, back, css):
+    """Refuse a shared-template change when a genuinely private card remains.
+
+    Notes this run is about to adopt are safe. A tagged legacy entry whose source
+    no longer matches any input is also part of this vocabulary system: it is
+    reported and left untouched rather than treated as somebody's private card.
+    Only a note with neither the sync tag nor a complete source set is unrelated
+    content, so that is the case that keeps the template change refused.
+    """
     model = collection.models.by_name(MODEL_NAME)
     if model is None:
         return
@@ -104,8 +121,18 @@ def check_model_migration(collection, plan, front, back, css):
         raise PlanError('笔记类型含未知字段或卡片模板数量不为一；停止迁移')
     changed = (fields != FIELDS or model['css'] != css or
                model['tmpls'][0]['qfmt'] != front or model['tmpls'][0]['afmt'] != back)
-    if changed and plan['excluded']:
-        raise PlanError('模板迁移会影响未托管笔记，已停止；请先在 Anki 中为私人卡片使用独立笔记类型')
+    if not changed:
+        return
+    adoptable = set(map(int, plan.get('migrated', [])))
+    for entry in plan.get('excluded', []):
+        nid = int(entry['note_id'])
+        if nid in adoptable:
+            continue
+        note = collection.get_note(nid)
+        managed_history = ('Zotero2Anki' in note.tags
+                           or bool(identities_from_html(note['Source'], require_all=True)))
+        if not managed_history:
+            raise PlanError('模板迁移会影响未托管笔记，已停止；请先在 Anki 中为私人卡片使用独立笔记类型')
 
 
 def execute_plan(collection, cards, plan, model, deck_id):
@@ -113,6 +140,9 @@ def execute_plan(collection, cards, plan, model, deck_id):
     counts = {'existing_before': len(owned), 'migrated_zotero_keys': len(plan['migrated']),
               'added': 0, 'updated': 0, 'unchanged': 0, 'marked_missing': 0, 'restored': 0}
     for card, nid, sources in zip(cards, plan['matches'], plan['sources']):
+        if nid in plan.get('preserved', []):
+            counts['unchanged'] += 1
+            continue
         note = collection.get_note(nid) if nid is not None else collection.new_note(model)
         # Anki canonicalizes tag order when saving. Order alone is not a change.
         before = (tuple(note.fields), tuple(sorted(note.tags)))
