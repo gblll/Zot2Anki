@@ -26,7 +26,7 @@ def check_runtime(root: Path, packages: Path, configure_anki):
     except ValueError as exc:
         raise RuntimeError(f'无法识别 Anki 后端版本：{version}') from exc
     if version_tuple not in SUPPORTED_ANKI_VERSIONS:
-        raise RuntimeError(f'RC 需要 Anki 26.05 或 26.09 后端；当前为 {version}')
+        raise RuntimeError(f'RC 需要 Anki 26 后端；当前为 {version}')
     with tempfile.TemporaryDirectory(prefix='zot2anki-check-') as temporary:
         collection = Collection(str(Path(temporary) / 'collection.anki2'))
         collection.close()

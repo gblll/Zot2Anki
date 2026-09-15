@@ -2,13 +2,13 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**v0.2.0-rc.4 — Windows pre-release candidate.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. The repository is public; this candidate is prepared as a Draft Pre-release, not a stable release.
+**v0.2.0-rc.4 — Windows pre-release.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. The repository is public; this is not a stable release.
 
 Local example citations and source links display the paper title followed by the italic journal and the page, separated by middle dots without parentheses. Zotero `journalAbbreviation` takes priority, falling back to `publicationTitle`; absent journals are omitted. Recognized shortened words receive missing periods (e.g. `Nat Commun` → `Nat. Commun.`); full words and initialisms such as `IEEE` and `ACS` remain intact. Maintain these fields in Zotero and sync to refresh citations while retaining review history. Online examples retain their own public provenance; local journal metadata is excluded from clean packages.
 
 ## Install
 
-Validated baseline: **Windows x64, Python 3.13, Anki 26.05 or 26.09**, and PyMuPDF **1.28.2**. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
+Validated baseline: **Windows x64, Python 3.13, Anki 26**, and PyMuPDF **1.28.2**. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
 
 Extract the Windows ZIP to a writable local folder. Chinese characters and spaces are supported. From that folder:
 
@@ -89,7 +89,7 @@ node --test tests/core.test.js
 
 Windows CI uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
 
-GitHub Support confirmed removal of unreferenced commits on 2026-09-07. On 2026-09-08, both known affected commit pages returned 404 in an authenticated browser; this verifies those two pages, not every possible historical cache. The repository is public; rc.2 was published on 2026-09-08 and rc.3 on 2026-09-13 as pre-releases. RC.4 adds Anki 26.09 support and clearer synchronization progress, and requires assets and acceptance for its exact commit. Existing releases, tags and assets remain unchanged. RC.4 acceptance uses synthetic data only; historical real-data checks are not new RC.4 acceptance results.
+GitHub Support confirmed removal of unreferenced commits on 2026-09-07. On 2026-09-08, both known affected commit pages returned 404 in an authenticated browser; this verifies those two pages, not every possible historical cache. The repository is public; rc.2, rc.3 and rc.4 were published as pre-releases. RC.4 supports Anki 26 and adds clearer synchronization progress; its assets and acceptance are bound to the exact release commit. Existing releases, tags and assets remain unchanged. RC.4 acceptance uses synthetic data only; historical real-data checks are not new RC.4 acceptance results.
 
 ## License
 

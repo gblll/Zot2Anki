@@ -2,14 +2,14 @@
 
 ## 0.2.0-rc.4
 
-Windows pre-release candidate prepared as a draft in the public repository. Existing rc.1, rc.2 and rc.3 tags and assets are preserved.
+Windows pre-release published in the public repository. Existing rc.1, rc.2 and rc.3 tags and assets are preserved.
 
-- Support the Anki 26.09 backend and stop importing the deprecated `AnkiPackageExporter`; package creation already uses `Collection.export_anki_package`.
+- Support the Anki 26 backend and stop importing the deprecated `AnkiPackageExporter`; package creation already uses `Collection.export_anki_package`.
 - Show clear startup stages and an animated elapsed-time indicator while the Python synchronization process runs, draining both output streams concurrently.
-- Validate the complete synthetic regression and clean-install workflow against both Anki 26.05 and 26.09 in Windows CI.
-- 支持 Anki 26.09 后端，并停止导入已弃用的 `AnkiPackageExporter`；制包继续使用现有的 `Collection.export_anki_package`。
+- Validate the complete synthetic regression and clean-install workflow against Anki 26 in Windows CI.
+- 支持 Anki 26 后端，并停止导入已弃用的 `AnkiPackageExporter`；制包继续使用现有的 `Collection.export_anki_package`。
 - 启动时显示清晰的阶段提示；Python 同步运行期间显示动画和已用时间，并发读取两个输出流。
-- Windows CI 同时使用 Anki 26.05 和 26.09 完成全部合成回归与全新安装验收。
+- Windows CI 使用 Anki 26 完成全部合成回归与全新安装验收。
 
 ## 0.2.0-rc.3
 

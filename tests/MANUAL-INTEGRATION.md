@@ -1,6 +1,6 @@
 # Acceptance / 验收
 
-All automated tests use temporary synthetic data. Use the project `.venv`, Python 3.13 and Anki 26.05 or 26.09. CI can set `ZOT2ANKI_TEST_ANKI_PACKAGES` for its disposable backend; this variable changes only tests, never production application detection.
+All automated tests use temporary synthetic data. Use the project `.venv`, Python 3.13 and Anki 26. CI can set `ZOT2ANKI_TEST_ANKI_PACKAGES` for its disposable backend; this variable changes only tests, never production application detection.
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
