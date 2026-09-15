@@ -8,7 +8,7 @@ Local example citations and source links display the paper title followed by the
 
 ## Install
 
-Validated baseline: **Windows x64, Python 3.13, Anki 26.5**, and PyMuPDF **1.28.2**. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
+Validated baseline: **Windows x64, Python 3.13, Anki 26.05 or 26.09**, and PyMuPDF **1.28.2**. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
 
 Extract the Windows ZIP to a writable local folder. Chinese characters and spaces are supported. From that folder:
 

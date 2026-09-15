@@ -4,6 +4,17 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title Zot2Anki Sync
 
+echo.
+echo  Zot2Anki Sync
+echo  Preparing synchronization...
+echo.
+echo  [      ] Loading configuration
+ping 127.0.0.1 -n 2 >nul
+echo  [==    ] Checking local files
+ping 127.0.0.1 -n 2 >nul
+echo  [====  ] Starting sync engine
+echo.
+
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_vocabulary.ps1" %*
 set "sync_exit=%ERRORLEVEL%"
 

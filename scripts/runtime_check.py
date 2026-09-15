@@ -6,6 +6,9 @@ import sys
 import tempfile
 
 
+SUPPORTED_ANKI_VERSIONS = {(26, 5), (26, 9)}
+
+
 def check_runtime(root: Path, packages: Path, configure_anki):
     if sys.platform != 'win32' or platform.machine().lower() not in ('amd64', 'x86_64'):
         raise RuntimeError('RC 仅支持 Windows x64')
@@ -18,8 +21,12 @@ def check_runtime(root: Path, packages: Path, configure_anki):
     import pymupdf
     Collection, Exporter = configure_anki(packages)
     from anki.buildinfo import version
-    if tuple(map(int, version.split('.'))) != (26, 5):
-        raise RuntimeError('RC 需要 Anki 26.5 后端')
+    try:
+        version_tuple = tuple(map(int, version.split('.')))
+    except ValueError as exc:
+        raise RuntimeError(f'无法识别 Anki 后端版本：{version}') from exc
+    if version_tuple not in SUPPORTED_ANKI_VERSIONS:
+        raise RuntimeError(f'RC 需要 Anki 26.05 或 26.09 后端；当前为 {version}')
     with tempfile.TemporaryDirectory(prefix='zot2anki-check-') as temporary:
         collection = Collection(str(Path(temporary) / 'collection.anki2'))
         collection.close()

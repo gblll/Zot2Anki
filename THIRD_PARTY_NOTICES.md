@@ -22,7 +22,7 @@ Neither the wheel nor an installed runtime is redistributed in the source ZIP. S
 
 ## Anki, Python and other runtimes
 
-[Anki](https://github.com/ankitects/anki) and its Python packages are external software, not bundled with this RC. The baseline uses Anki 26.5's backend. The [Anki 26.05 license notice](https://github.com/ankitects/anki/blob/26.05/LICENSE), copied without changes to [LICENSES/Anki-LICENSE.txt](LICENSES/Anki-LICENSE.txt), identifies AGPL version 3 or later and components with other terms. The corresponding upstream source tree is [Anki 26.05](https://github.com/ankitects/anki/tree/26.05). Anki's license notices and its own third-party notices apply to that installation. CI separately installs a synthetic-test backend from PyPI.
+[Anki](https://github.com/ankitects/anki) and its Python packages are external software, not bundled with this RC. The validated backends are Anki 26.05 and 26.09. The [Anki 26.05 license notice](https://github.com/ankitects/anki/blob/26.05/LICENSE), copied without changes to [LICENSES/Anki-LICENSE.txt](LICENSES/Anki-LICENSE.txt), identifies AGPL version 3 or later and components with other terms. The corresponding upstream source tree is [Anki 26.05](https://github.com/ankitects/anki/tree/26.05). Anki's license notices and its own third-party notices apply to the installed version. CI separately installs a synthetic-test backend from PyPI.
 
 [Python](https://www.python.org/psf/license/) is installed separately. No interpreter or Anki installation folder is included in the release ZIP. Standard-library use does not replace the respective runtime's notices.
 

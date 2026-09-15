@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Support the Anki 26.09 backend and stop importing the deprecated `AnkiPackageExporter`; package creation already uses `Collection.export_anki_package`.
+- Show clear startup stages and an animated elapsed-time indicator while the Python synchronization process runs, draining both output streams concurrently.
+- 支持 Anki 26.09 后端，并停止导入已弃用的 `AnkiPackageExporter`；制包继续使用现有的 `Collection.export_anki_package`。
+- 启动时显示清晰的阶段提示；Python 同步运行期间显示动画和已用时间，并发读取两个输出流。
+
 ## 0.2.0-rc.3
 
 - Add `--skip-invalid-sources` / `-SkipInvalidSources`. A source link whose annotation was deleted in Zotero still stops the run by default, but this flag skips only the affected entries, flags them for review in the report, records each word, dead link and reason under `skipped_sources` in the run journal, and appends them to the review TSV. All other entries sync normally; a skipped entry keeps its existing card untouched, with content, identity and review history intact.

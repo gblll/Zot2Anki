@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Config = "",
     [string]$Database = "",
@@ -114,8 +114,43 @@ try {
         if ($flag[1]) { $arguments += "--$($flag[0])" }
     }
     # Python emits a short status and the journal path, not private report contents.
-    $output = @(& $python @arguments)
-    $scriptExitCode = $LASTEXITCODE
+    # Run Python asynchronously so the console stays alive and informative while
+    # a large library is being synchronized.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $python
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    # Windows PowerShell 5.1 has no ArgumentList property; quote each argument.
+    $psi.Arguments = (($arguments | ForEach-Object {
+        '"' + ($_.ToString() -replace '"', '\\"') + '"'
+    }) -join ' ')
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    [void]$process.Start()
+    # Drain both streams concurrently so neither redirected pipe can fill and
+    # block a long-running synchronization.
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $started = Get-Date
+    $frames = @('|', '/', '-', '\')
+    $tips = @('Indexing references...','Checking vocabulary changes...','Almost there...','Time for a sip of water...')
+    $frameIndex = 0
+    while (-not $process.HasExited) {
+        $elapsed = [int]((Get-Date) - $started).TotalSeconds
+        $tipIndex = [Math]::Min([int]($elapsed / 8), $tips.Count - 1)
+        Write-Host ("`r  [{0}] {1} ({2}s)   " -f $frames[$frameIndex % $frames.Count], $tips[$tipIndex], $elapsed) -NoNewline
+        $frameIndex++
+        Start-Sleep -Milliseconds 250
+    }
+    $process.WaitForExit()
+    $stdout = @($stdoutTask.GetAwaiter().GetResult() -split "\r?\n" | Where-Object { $_ -ne "" })
+    $stderr = @($stderrTask.GetAwaiter().GetResult() -split "\r?\n" | Where-Object { $_ -ne "" })
+    Write-Host "`r$(' ' * 90)`r" -NoNewline
+    $output = @($stdout)
+    $stderr | ForEach-Object { $output += $_ }
+    $scriptExitCode = $process.ExitCode
     $output | ForEach-Object { Write-Host $_ }
     if ($scriptExitCode -eq 0 -and -not ($Check -or $DryRun -or $Recover)) {
         $line = $output | Where-Object { $_ -like "Sync complete. Report: *" } | Select-Object -Last 1

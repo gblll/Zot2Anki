@@ -57,9 +57,11 @@ def _configure_anki(packages: Path):
         raise SyncError(f"找不到 Anki Python 包：{packages}")
     sys.path.insert(0, str(packages))
     from anki.collection import Collection
-    from anki.exporting import AnkiPackageExporter
 
-    return Collection, AnkiPackageExporter
+    # Package creation uses Collection.export_anki_package() in sync_packages.
+    # Keep the second tuple item for the existing runtime/test contract without
+    # importing the deprecated AnkiPackageExporter compatibility wrapper.
+    return Collection, None
 
 
 def _sha256(path: Path) -> str:

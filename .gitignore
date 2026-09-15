@@ -58,6 +58,8 @@ config.local.*
 node_modules/
 /.codex/
 /.agents/
+/.cindy-source/
+/.rename-project-threads-SKILL.md
 /.vscode/
 /.idea/
 .DS_Store
