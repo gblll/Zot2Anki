@@ -35,6 +35,13 @@ class LauncherContractTests(unittest.TestCase):
         self.assertIn("0x0040", self.sync_script)
         self.assertIn("Restore-ConsoleMode", self.sync_script)
 
+    def test_powershell_keeps_long_syncs_responsive_without_pipe_deadlocks(self):
+        self.assertIn("ReadToEndAsync()", self.sync_script)
+        self.assertEqual(self.sync_script.count("ReadToEndAsync()"), 2)
+        self.assertIn("while (-not $process.HasExited)", self.sync_script)
+        self.assertIn("$process.ExitCode", self.sync_script)
+        self.assertIn("TotalSeconds", self.sync_script)
+
     def test_launcher_uses_only_project_venv(self):
         self.assertIn('.venv', self.sync_script)
         self.assertNotIn('Get-Command python', self.sync_script)

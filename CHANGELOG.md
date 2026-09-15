@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.0-rc.4
+
+Windows pre-release candidate prepared as a draft in the public repository. Existing rc.1, rc.2 and rc.3 tags and assets are preserved.
 
 - Support the Anki 26.09 backend and stop importing the deprecated `AnkiPackageExporter`; package creation already uses `Collection.export_anki_package`.
 - Show clear startup stages and an animated elapsed-time indicator while the Python synchronization process runs, draining both output streams concurrently.
+- Validate the complete synthetic regression and clean-install workflow against both Anki 26.05 and 26.09 in Windows CI.
 - 支持 Anki 26.09 后端，并停止导入已弃用的 `AnkiPackageExporter`；制包继续使用现有的 `Collection.export_anki_package`。
 - 启动时显示清晰的阶段提示；Python 同步运行期间显示动画和已用时间，并发读取两个输出流。
+- Windows CI 同时使用 Anki 26.05 和 26.09 完成全部合成回归与全新安装验收。
 
 ## 0.2.0-rc.3
 
@@ -19,14 +23,14 @@
 - Fix: the shared-template check now refuses only for a card that is not part of this vocabulary system. Tagged legacy entries whose source disappeared are reported and left untouched instead of blocking the run forever.
 - 修复：共享模板检查现在只对不属于本生词系统的卡片拒绝。带标签但来源已失效的历史条目改为列入报告并保持不动，不再永久阻塞运行。
 
-Windows pre-release candidate prepared as a draft in the public repository. Existing rc.1 and rc.2 tags and assets are preserved.
+Windows pre-release published on 2026-09-13. Existing rc.1 and rc.2 tags and assets are preserved.
 
 - 期刊格式改为无括号斜体，按缩写词补齐句点（`Nat. Commun.`），保留完整单词和首字母缩写。
 
 - 原文例句与来源链接增加 Zotero 期刊缩写，缺失时回退期刊全名；支持主题颜色及长标题换行。
 - 保持在线出处和 clean 分享允许名单，补充期刊显示、旧卡升级、复习记录保留与重复同步回归验证。
 - 本轮按准确提交完成合成数据、Windows CI 和全新安装验收；结果随发行附件提供，不沿用历史真实资料验收结论。
-- 仓库已公开，rc.2 于 2026-09-08 公开预发布；修正文档中的旧准备状态，rc.3 发行条目保持草稿。
+- 仓库已公开，rc.2 于 2026-09-08、rc.3 于 2026-09-13 公开预发布；已有标签和附件保持不变。
 
 ## 0.2.0-rc.2
 
@@ -61,4 +65,4 @@ When v0.2.0-rc.1 was prepared, the repository remained private, known old GitHub
 
 ### 中文说明
 
-本次补齐来源归属、冲突预检、一致性备份、副本提交、提交后恢复、分享允许名单、例句与缓存、固定运行环境、Windows CI 和双语文档。旧插件保留源码与测试，不附 XPI。制作此候选版时，旧 GitHub 对象和未选择的项目许可证阻止公开发行，仅准备私有预发布草稿；后续许可调整见上方 Unreleased。
+本次补齐来源归属、冲突预检、一致性备份、副本提交、提交后恢复、分享允许名单、例句与缓存、固定运行环境、Windows CI 和双语文档。旧插件保留源码与测试，不附 XPI。制作此候选版时，旧 GitHub 对象和未选择的项目许可证阻止公开发行，仅准备私有预发布草稿；后续许可调整见上方发行条目。

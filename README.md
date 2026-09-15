@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**v0.2.0-rc.3 — Windows pre-release candidate.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. The repository is public; this candidate is prepared as a Draft Pre-release, not a stable release.
+**v0.2.0-rc.4 — Windows pre-release candidate.** Sync one Zotero vocabulary Note into Anki while preserving card identity, personal Notes and review history. The repository is public; this candidate is prepared as a Draft Pre-release, not a stable release.
 
 Local example citations and source links display the paper title followed by the italic journal and the page, separated by middle dots without parentheses. Zotero `journalAbbreviation` takes priority, falling back to `publicationTitle`; absent journals are omitted. Recognized shortened words receive missing periods (e.g. `Nat Commun` → `Nat. Commun.`); full words and initialisms such as `IEEE` and `ACS` remain intact. Maintain these fields in Zotero and sync to refresh citations while retaining review history. Online examples retain their own public provenance; local journal metadata is excluded from clean packages.
 
@@ -89,7 +89,7 @@ node --test tests/core.test.js
 
 Windows CI uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
 
-GitHub Support confirmed removal of unreferenced commits on 2026-09-07. On 2026-09-08, both known affected commit pages returned 404 in an authenticated browser; this verifies those two pages, not every possible historical cache. The repository is public and rc.2 was published as a pre-release on 2026-09-08. RC.3 adds journal display improvements and requires assets and acceptance for its exact commit. The rc.1 draft and rc.2 release, tags and assets remain unchanged. RC.3 acceptance uses synthetic data only; historical real-data checks are not new RC.3 acceptance results.
+GitHub Support confirmed removal of unreferenced commits on 2026-09-07. On 2026-09-08, both known affected commit pages returned 404 in an authenticated browser; this verifies those two pages, not every possible historical cache. The repository is public; rc.2 was published on 2026-09-08 and rc.3 on 2026-09-13 as pre-releases. RC.4 adds Anki 26.09 support and clearer synchronization progress, and requires assets and acceptance for its exact commit. Existing releases, tags and assets remain unchanged. RC.4 acceptance uses synthetic data only; historical real-data checks are not new RC.4 acceptance results.
 
 ## License
 
