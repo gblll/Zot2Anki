@@ -2,35 +2,115 @@
 
 ## 0.2.0-rc.4
 
-Windows pre-release published in the public repository. Existing rc.1, rc.2 and rc.3 tags and assets are preserved.
+Windows public pre-release published on 2026-09-15. This is not a stable release; the rc.1, rc.2 and rc.3 releases, tags and assets remain unchanged.
 
-- Support the Anki 26 backend and stop importing the deprecated `AnkiPackageExporter`; package creation already uses `Collection.export_anki_package`.
-- Show clear startup stages and an animated elapsed-time indicator while the Python synchronization process runs, draining both output streams concurrently.
-- Validate the complete synthetic regression and clean-install workflow against Anki 26 in Windows CI.
-- 支持 Anki 26 后端，并停止导入已弃用的 `AnkiPackageExporter`；制包继续使用现有的 `Collection.export_anki_package`。
-- 启动时显示清晰的阶段提示；Python 同步运行期间显示动画和已用时间，并发读取两个输出流。
-- Windows CI 使用 Anki 26 完成全部合成回归与全新安装验收。
+### What's changed
+
+#### Added
+
+- **Anki 26.09 backend support:** Runs against Anki 26.05 and Anki 26.09. Python and Anki runtimes are still installed separately; they are not bundled in the ZIP.
+- **Sync progress:** The Windows launcher shows configuration loading, file checks and sync-engine startup, then displays an animated elapsed-time indicator while synchronization is running.
+
+#### Improved
+
+- **Long-running sync feedback:** The launcher drains Python's standard output and error streams concurrently, so progress remains visible and the process is not blocked by a full output pipe.
+
+#### Fixed
+
+- **Package export compatibility:** The release no longer imports Anki's deprecated `AnkiPackageExporter` wrapper. Personal and clean packages continue to use `Collection.export_anki_package`.
+
+### Download
+
+- Windows source package: `Zot2Anki-v0.2.0-rc.4-windows.zip`
+
+### First launch and validation
+
+- Baseline: Windows x64, Python 3.13, Anki 26.05 or 26.09, PyMuPDF 1.28.2 and a local NTFS directory.
+- Anki 26.05 and 26.09 each passed 120 Python tests and the Windows clean-install workflow; 8 JavaScript tests and a separately invoked 28-test synthetic Anki integration suite also passed. Unicode/space paths, offline dry-run, repeated sync, raw APKG privacy checks, the release allowlist and reproducible ZIP builds also passed.
+- This acceptance used synthetic data only. No mobile or legacy-plugin real-device acceptance is claimed, and no XPI or private data is included.
+
+### 更新内容
+
+#### 新增
+
+- **Anki 26.09 后端支持：** 现在支持 Anki 26.05 和 Anki 26.09。Python 与 Anki 运行时仍需单独安装，发行 ZIP 不包含这些运行时。
+- **同步进度：** Windows 启动器显示配置加载、文件检查和同步引擎启动阶段；同步运行期间显示动画和已用时间。
+
+#### 改进
+
+- **长时间同步反馈：** 启动器并发读取 Python 的标准输出和错误输出，持续显示进度，也不会因输出管道积满而阻塞。
+
+#### 修复
+
+- **制包兼容性：** 不再导入 Anki 已弃用的 `AnkiPackageExporter` 包装器；个人包和 clean 分享包继续使用 `Collection.export_anki_package`。
+
+### 下载
+
+- Windows 源码发行包：`Zot2Anki-v0.2.0-rc.4-windows.zip`
+
+### 首次启动与验收
+
+- 运行基线：Windows x64、Python 3.13、Anki 26.05 或 26.09、PyMuPDF 1.28.2，以及本地 NTFS 目录。
+- Anki 26.05 和 26.09 各通过 120 项 Python 测试及 Windows 全新安装流程；另有 8 项 JavaScript 测试和单独运行的 28 项合成 Anki 集成测试通过。中文和空格路径、离线预演、重复同步、原始 APKG 隐私检查、发行文件允许名单和 ZIP 可重复构建也已通过。
+- 本轮仅使用合成数据验收，不声明移动端或旧插件实机通过；不包含 XPI 或私人资料。
 
 ## 0.2.0-rc.3
 
-- Add `--skip-invalid-sources` / `-SkipInvalidSources`. A source link whose annotation was deleted in Zotero still stops the run by default, but this flag skips only the affected entries, flags them for review in the report, records each word, dead link and reason under `skipped_sources` in the run journal, and appends them to the review TSV. All other entries sync normally; a skipped entry keeps its existing card untouched, with content, identity and review history intact.
+Windows public pre-release published on 2026-09-13. This is not a stable release; the rc.1 and rc.2 releases, tags and assets remain unchanged.
 
-- 新增 `--skip-invalid-sources` / `-SkipInvalidSources`。批注已删除的来源链接默认仍会停止整次同步，该开关只跳过受影响的条目：标记待复核，在运行日志的 `skipped_sources` 与复核 TSV 中逐条记录单词、失效链接和原因，其余条目照常同步；被跳过条目的卡片保持原样，内容、身份与复习历史都不改动。
-- Fix: legacy adoption never ran, because `'Source' in note` is always false for an Anki note. Every existing card was therefore treated as unowned, which also made the shared-template check refuse every later run. Adoption now reads the field directly, so an existing collection converts on the first successful run.
-- 修复：旧笔记接管从未生效——Anki 笔记对象不支持用 `in` 判断字段名，导致既有卡片全部被当成未托管，共享模板检查也随之拒绝后续每次运行。现在直接读取字段，既有 collection 可在首次成功运行时完成接管。
-- Fix: an entry whose source did not resolve to a live annotation could still be sent to an online provider. Provider lookup now requires a resolved annotation context, so unresolved text never leaves the machine.
-- 修复：来源未能对应到有效批注的条目仍可能被发送到在线提供方。现在只有已解析到批注上下文的条目才会外发查询。
-- Fix: the shared-template check now refuses only for a card that is not part of this vocabulary system. Tagged legacy entries whose source disappeared are reported and left untouched instead of blocking the run forever.
-- 修复：共享模板检查现在只对不属于本生词系统的卡片拒绝。带标签但来源已失效的历史条目改为列入报告并保持不动，不再永久阻塞运行。
+### What's changed
 
-Windows pre-release published on 2026-09-13. Existing rc.1 and rc.2 tags and assets are preserved.
+#### Added
 
-- 期刊格式改为无括号斜体，按缩写词补齐句点（`Nat. Commun.`），保留完整单词和首字母缩写。
+- **Opt-in invalid-source skipping:** `--skip-invalid-sources` / `-SkipInvalidSources` skips only entries whose Zotero annotation has been deleted. Each skipped word, link and reason is written to `skipped_sources` in the run journal and to the review TSV. Healthy entries continue to sync.
+- **Journal citation display:** Source citations use Zotero's journal abbreviation when available, fall back to the full title otherwise, use italic text without parentheses, add conservative abbreviation punctuation and wrap long titles with theme-aware colors.
 
-- 原文例句与来源链接增加 Zotero 期刊缩写，缺失时回退期刊全名；支持主题颜色及长标题换行。
-- 保持在线出处和 clean 分享允许名单，补充期刊显示、旧卡升级、复习记录保留与重复同步回归验证。
-- 本轮按准确提交完成合成数据、Windows CI 和全新安装验收；结果随发行附件提供，不沿用历史真实资料验收结论。
-- 仓库已公开，rc.2 于 2026-09-08、rc.3 于 2026-09-13 公开预发布；已有标签和附件保持不变。
+#### Improved
+
+- **Safe handling of skipped entries:** A skipped entry remains in the Zotero Note, so its existing Anki card is left untouched: content, identity, tags, personal Notes and review history are preserved, and it is not marked missing. If no valid entries remain, synchronization stops without committing.
+- **Legacy note adoption:** Existing managed cards can be adopted on the first successful run when their source identity matches uniquely; the shared-template check no longer blocks every later run because of the old field lookup bug.
+
+#### Fixed
+
+- **Online lookup safety:** Text without a resolved Zotero annotation context is never sent to an online example provider.
+- **Shared-template migration:** Tagged legacy entries whose source disappeared are reported and left untouched. The migration is refused only when an unrelated, unowned card would be affected.
+
+### Download
+
+- Windows source package: `Zot2Anki-v0.2.0-rc.3-windows.zip`
+
+### First launch and validation
+
+- Baseline: Windows x64, Python 3.13, Anki 26.5, PyMuPDF 1.28.2 and a local NTFS directory. Runtimes are installed separately; no XPI is included.
+- 119 Python tests, 8 JavaScript tests and a separately invoked 28-test synthetic Anki integration suite passed, together with clean installation in a Unicode/space path, offline dry-run, repeated sync, release allowlist validation, reproducible ZIP hashes and exact-commit Windows CI.
+- Invalid-source preservation was checked with disposable synthetic databases covering repeated sync, legacy cards, partial invalid sources and the all-invalid stop path. This release does not claim mobile or legacy-plugin real-device acceptance.
+
+### 更新内容
+
+#### 新增
+
+- **可选跳过失效来源：** `--skip-invalid-sources` / `-SkipInvalidSources` 只跳过 Zotero 批注已删除的条目。运行日志的 `skipped_sources` 和复核 TSV 会记录每个单词、链接及原因，其余有效条目继续同步。
+- **期刊出处显示：** 优先使用 Zotero 期刊缩写，缺失时回退期刊全名；期刊使用无括号斜体，按可识别缩写保守补句点，并支持主题颜色和长标题换行。
+
+#### 改进
+
+- **跳过条目的安全处理：** 被跳过的条目仍在 Zotero Note 中，因此对应 Anki 卡片保持原样：内容、身份、标签、个人 Notes 和复习历史均保留，也不会标记为缺失。若没有任何有效条目，同步会停止且不提交。
+- **旧笔记接管：** 只有来源身份唯一匹配的既有托管卡片，才能在首次成功运行时接管；修复旧字段读取问题后，共享模板检查不再无条件阻塞后续运行。
+
+#### 修复
+
+- **在线查询安全：** 未解析到有效 Zotero 批注上下文的文本不会发送给在线例句提供方。
+- **共享模板迁移：** 来源已消失的带标签历史条目会进入报告并保持不变；只有可能影响无关未托管卡片时才拒绝迁移。
+
+### 下载
+
+- Windows 源码发行包：`Zot2Anki-v0.2.0-rc.3-windows.zip`
+
+### 首次启动与验收
+
+- 运行基线：Windows x64、Python 3.13、Anki 26.5、PyMuPDF 1.28.2，以及本地 NTFS 目录。运行时需单独安装，不包含 XPI。
+- 119 项 Python 测试、8 项 JavaScript 测试和单独运行的 28 项合成 Anki 集成测试通过；中文和空格路径下的全新安装、离线预演、重复同步、发行文件允许名单、ZIP 可重复构建和准确提交的 Windows CI 也已通过。
+- 失效来源保护已用临时合成数据库验证，覆盖重复同步、旧卡、部分来源失效和全部来源失效时停止的情况。本版不声明移动端或旧插件实机验收通过。
 
 ## 0.2.0-rc.2
 
