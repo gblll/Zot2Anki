@@ -8,7 +8,7 @@
 
 ## 安装
 
-验证基线为 **Windows x64、Python 3.13、Anki 26、PyMuPDF 1.28.2**。请先安装 Python 和 Anki；发行包不包含这些运行时。环境不匹配时，会在打开个人数据库前退出。
+验证基线为 **Windows x64、Python 3.13、Anki 后端 26.5 / 26.9、PyMuPDF 1.28.2**。Anki 的零补齐版本号 26.05 / 26.09 同样可识别；其他 26.x 或带额外补丁号的版本需要单独验证，不会自动放行。请先安装 Python 和 Anki；发行包不包含这些运行时。环境不匹配时，会在打开个人数据库前退出。
 
 将 ZIP 解压到可写的本地目录，支持中文和空格路径。在解压目录执行：
 
@@ -60,7 +60,7 @@ Copy-Item config.example.json config.local.json
 | `-NoOnline` | `--no-online` | 强制本次离线。 |
 | `-Recover <报告>` | `--recover <报告>` | 仅整理已经提交的运行产物。 |
 
-直接调用使用 `.venv/Scripts/python.exe scripts/sync_vocabulary.py`，Python 入口本身不会打开 Anki。单独导出 TSV 的入口仍为 `scripts/export_vocabulary_note.py`。完整同步在离线状态也需要 PDF 依赖。可通过 `scripts/install_desktop_shortcut.ps1` 创建桌面快捷方式。
+直接调用使用 `.venv/Scripts/python.exe scripts/sync_vocabulary.py`，Python 入口本身不会打开 Anki。单独导出 TSV 的入口仍为 `scripts/export_vocabulary_note.py`，同样严格校验来源格式、批注是否存在及仓库内输出路径；`--no-examples` 只关闭例句提取，不跳过来源核验，失效批注可用 `--skip-invalid-sources` 跳过并记录。段落外的非空文本会被拒绝，避免把未解析内容误当作已删除词条。完整同步在离线状态也需要 PDF 依赖。可通过 `scripts/install_desktop_shortcut.ps1` 创建桌面快捷方式。
 
 ## 匹配与产物
 

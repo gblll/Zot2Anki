@@ -8,7 +8,7 @@ Local example citations and source links display the paper title followed by the
 
 ## Install
 
-Validated baseline: **Windows x64, Python 3.13, Anki 26**, and PyMuPDF **1.28.2**. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
+Validated baseline: **Windows x64, Python 3.13, Anki backends 26.5 / 26.9**, and PyMuPDF **1.28.2**. Zero-padded Anki versions 26.05 / 26.09 are also recognized; other 26.x or additional patch versions require separate validation and are not automatically accepted. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
 
 Extract the Windows ZIP to a writable local folder. Chinese characters and spaces are supported. From that folder:
 
@@ -60,7 +60,7 @@ A successful report identifies the updated collection. The Windows launcher open
 | `-NoOnline` | `--no-online` | Force offline operation. |
 | `-Recover <report>` | `--recover <report>` | Finish outputs of an already committed run. |
 
-Direct commands use `.venv/Scripts/python.exe scripts/sync_vocabulary.py`; the direct Python command does not launch Anki. Export-only TSV remains available through `scripts/export_vocabulary_note.py`. Full sync requires PDF support even offline. An optional desktop shortcut can be created with `scripts/install_desktop_shortcut.ps1`.
+Direct commands use `.venv/Scripts/python.exe scripts/sync_vocabulary.py`; the direct Python command does not launch Anki. Export-only TSV remains available through `scripts/export_vocabulary_note.py`, with strict source-format, annotation-existence and repository output checks. `--no-examples` disables example extraction but retains source checks; `--skip-invalid-sources` skips and reports dead annotations. Nonempty text outside paragraphs is rejected so unparsed content cannot become missing entries. Full sync requires PDF support even offline. An optional desktop shortcut can be created with `scripts/install_desktop_shortcut.ps1`.
 
 ## Identity and outputs
 

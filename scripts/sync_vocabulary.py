@@ -194,12 +194,10 @@ def _configure_utf8_console() -> None:
 
 
 def check_output_directory(output_dir: Path):
-    root = local_config.ROOT.resolve()
-    if output_dir.is_relative_to(root) and (root / '.git').exists():
-        relative = (output_dir / 'privacy-probe.json').relative_to(root)
-        result = subprocess.run(['git', 'check-ignore', '--no-index', '--quiet', str(relative)], cwd=root)
-        if result.returncode != 0:
-            raise SyncError('仓库内输出目录未被 Git 忽略，停止运行')
+    try:
+        local_config.check_output_directory(output_dir)
+    except local_config.ConfigError as exc:
+        raise SyncError(str(exc)) from exc
 
 
 def _profile_name(args):

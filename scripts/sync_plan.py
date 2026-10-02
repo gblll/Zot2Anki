@@ -53,12 +53,15 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False, sk
     migrated = []
     if ledger is None:
         # A tag alone is insufficient: legacy links must exactly identify a
-        # unique current card. Unknown history is explicitly left unowned.
+        # unique current card. Explicitly skipped identities can be subtracted
+        # only when the entire remaining set matches; the old note is preserved.
         for nid, note in notes.items():
             # Anki's note does not support `in` for field names, so read the field
             # directly; this model is required to have a Source field.
             sources = identities_from_html(note['Source'], require_all=True)
-            candidates = [i for i, values in enumerate(incoming) if sources and set(values) == set(sources)]
+            active_sources = set(sources) - skipped_identities
+            candidates = [i for i, values in enumerate(incoming)
+                          if active_sources and set(values) == active_sources]
             if 'Zotero2Anki' in note.tags and len(candidates) == 1:
                 owned[str(nid)] = {'sources': sources, 'word': word_identity(note['Word'])}
                 migrated.append(nid)

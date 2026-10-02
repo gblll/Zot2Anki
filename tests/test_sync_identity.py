@@ -79,6 +79,48 @@ class IdentityTests(unittest.TestCase):
                 self.run_sync(cards)
             self.assertEqual(self.col.db.all('select * from notes'), before)
 
+    def test_first_adoption_with_partial_skipped_sources_preserves_and_later_restores(self):
+        self.run_sync([card('one', 'A', 'B'), card('two', 'C')])
+        nid = self.col.find_notes('one')[0]
+        note = self.col.get_note(nid)
+        note['Notes'] = 'private notes'
+        note.add_tag('private')
+        self.col.update_note(note)
+        cid = self.col.db.scalar('select id from cards where nid=?', nid)
+        self.col.db.execute('update cards set type=2,queue=2,reps=9,ivl=22,due=100 where id=?', cid)
+        self.col.db.execute('insert into revlog values (123456789,?,0,3,22,6,2500,1000,1)', cid)
+        self.col.set_config(sync_plan.LEDGER_KEY, None)
+        before = {table: self.col.db.all(f'select * from {table} order by id')
+                  for table in ('notes', 'cards', 'revlog')}
+        skipped = [{'source': 'zotero://open-pdf/library/items/ATT?annotation=B'}]
+        for _ in range(2):
+            result = self.run_sync([card('one', 'A'), card('two', 'C')], skipped_sources=skipped)
+            self.assertEqual(result['added'], 0)
+            self.assertEqual(result['marked_missing'], 0)
+            for table, rows in before.items():
+                self.assertEqual(self.col.db.all(f'select * from {table} order by id'), rows, table)
+            ledger = self.col.get_config(sync_plan.LEDGER_KEY)
+            self.assertEqual(ledger['notes'][str(nid)]['sources'], ['library/ATT/A', 'library/ATT/B'])
+        result = self.run_sync([card('renamed', 'A', 'B'), card('two', 'C')])
+        self.assertEqual(result['added'], 0)
+        self.assertEqual(self.col.get_note(nid)['Word'], 'renamed')
+        self.assertEqual(self.col.get_note(nid)['Notes'], 'private notes')
+        for table in ('cards', 'revlog'):
+            self.assertEqual(self.col.db.all(f'select * from {table} order by id'), before[table])
+
+    def test_skipped_sources_do_not_allow_ambiguous_legacy_adoption(self):
+        self.run_sync([card('one', 'A', 'B', 'D'), card('two', 'C')])
+        self.col.set_config(sync_plan.LEDGER_KEY, None)
+        skipped = [{'source': 'zotero://open-pdf/library/items/ATT?annotation=B'}]
+        before = self.col.db.all('select * from notes order by id')
+        for incoming in ([card('one', 'A'), card('two', 'C')],
+                         [card('split1', 'A'), card('split2', 'D'), card('two', 'C')],
+                         [card('merged', 'A', 'D', 'C')]):
+            with self.subTest(incoming=incoming), self.assertRaises(sync_plan.PlanError):
+                self.run_sync(incoming, skipped_sources=skipped)
+            self.assertEqual(self.col.db.all('select * from notes order by id'), before)
+            self.assertIsNone(self.col.get_config(sync_plan.LEDGER_KEY, None))
+
     def test_tag_order_does_not_write_unchanged_notes(self):
         entry = card('one', 'A')
         entry.tags = ['Zotero2Anki', 'NeedsReview', 'NoExample']

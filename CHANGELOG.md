@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Reject nonempty text outside vocabulary paragraphs before matching, preventing unparsed entries from becoming missing cards.
+- Preserve partially skipped legacy notes during first adoption when all remaining sources match uniquely; retain their full identities for later restoration.
+- Apply strict source validation and repository output/cache protection to the standalone TSV CLI, including source checks with `--no-examples`.
+- Correct the offline regression's network interception and cover missing-PDF fallback, first adoption and malformed-note failures with synthetic data.
+- Clarify that the runtime gate accepts Anki backends 26.5 / 26.9, not every Anki 26 release.
+
+未发布修复：阻止段落外内容被漏解析；修复部分来源失效时旧卡首次接管；统一 TSV 入口来源和输出检查；补充离线及身份保留回归；明确 Anki 精确版本范围。
+
 ## 0.2.0-rc.4
 
 Windows public pre-release published on 2026-09-15. This is not a stable release; the rc.1, rc.2 and rc.3 releases, tags and assets remain unchanged.

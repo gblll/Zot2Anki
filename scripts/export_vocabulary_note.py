@@ -95,6 +95,7 @@ class ParagraphRecord:
     examples: list[ExampleCandidate] = field(default_factory=list)
     example_tags: list[str] = field(default_factory=list)
     raw_text: str = ''
+    outside_paragraph: bool = False
 
 
 @dataclass
@@ -257,10 +258,12 @@ class _VocabularyNoteParser(HTMLParser):
         self.records: list[ParagraphRecord] = []
         self._paragraph: dict | None = None
         self._paragraph_index = 0
+        self._outside_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag == "p":
+            self._finish_outside_text()
             if self._paragraph is not None:
                 self._finish_paragraph()
             self._paragraph = {
@@ -305,6 +308,7 @@ class _VocabularyNoteParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         paragraph = self._paragraph
         if paragraph is None:
+            self._outside_parts.append(data)
             return
         paragraph['raw_text'].append(data)
         if paragraph["capturing_front"]:
@@ -316,6 +320,18 @@ class _VocabularyNoteParser(HTMLParser):
         super().close()
         if self._paragraph is not None:
             self._finish_paragraph()
+        self._finish_outside_text()
+
+    def _finish_outside_text(self) -> None:
+        # Wrapper elements and whitespace are normal in Zotero notes. Nonempty
+        # text outside a paragraph must remain visible to strict validation.
+        text = normalize_text(''.join(self._outside_parts))
+        self._outside_parts.clear()
+        if text:
+            self.records.append(ParagraphRecord(
+                index=self._paragraph_index, front='', href='', definition_html='',
+                code_count=0, link_count=0, raw_text=text, outside_paragraph=True))
+            self._paragraph_index += 1
 
     def _finish_paragraph(self) -> None:
         paragraph = self._paragraph
@@ -426,6 +442,38 @@ def _append_unique(values: list[str], value: str) -> None:
         values.append(value)
 
 
+def _resolve_record_sources(
+    connection: sqlite3.Connection,
+    records: list[ParagraphRecord],
+    data_dir: Path,
+    *,
+    strict_sources: bool,
+    skip_invalid_sources: bool,
+):
+    """Validate source existence independently of PDF or network extraction."""
+    valid = [record for record in records if record.front and source_identity(record.href)]
+    contexts = load_source_contexts(connection, [record.href for record in valid], data_dir)
+    unresolved = [record for record in valid if source_identity(record.href) not in contexts]
+    if unresolved and strict_sources and not skip_invalid_sources:
+        raise ExportError(
+            f'{len(unresolved)} 条生词来源无法对应到有效 annotation；'
+            '请在 Zotero 中核对来源链接，或使用 --skip-invalid-sources 跳过并复核。',
+            conflicts=[{'paragraph_index': r.index, 'word': r.front, 'source': r.href,
+                        'reason': 'annotation_not_found_or_deleted'} for r in unresolved])
+    skipped_sources = []
+    if skip_invalid_sources:
+        for record in unresolved:
+            _append_unique(record.example_tags, "MissingSource")
+            _append_unique(record.review_reasons, "annotation_not_found")
+            skipped_sources.append({'paragraph_index': record.index, 'word': record.front,
+                                    'source': record.href, 'reason': 'annotation_not_found_or_deleted'})
+        skipped_indexes = {record.index for record in unresolved}
+        valid = [record for record in valid if record.index not in skipped_indexes]
+    for record in valid:
+        record.source_context = contexts.get(source_identity(record.href))
+    return valid, contexts, skipped_sources
+
+
 def enrich_records_with_examples(
     connection: sqlite3.Connection,
     records: list[ParagraphRecord],
@@ -445,26 +493,9 @@ def enrich_records_with_examples(
     before it refuses.
     """
 
-    valid = [record for record in records if record.front and source_identity(record.href)]
-    skipped_sources: list[dict] = []
-    hrefs = [record.href for record in valid]
-    contexts = load_source_contexts(connection, hrefs, data_dir)
-    unresolved = [r for r in valid if source_identity(r.href) not in contexts]
-    if unresolved and strict_sources and not skip_invalid_sources:
-        raise ExportError(
-            f'{len(unresolved)} 条生词来源无法对应到有效 annotation；'
-            '请在 Zotero 中核对来源链接，或使用 --skip-invalid-sources 跳过并复核。',
-            conflicts=[{'paragraph_index': r.index, 'word': r.front, 'source': r.href,
-                        'reason': 'annotation_not_found_or_deleted'} for r in unresolved])
-    if skip_invalid_sources:
-        # The link itself is intact, so the rest of the note stays trustworthy:
-        # skip only these entries, tag them for review and keep the source link.
-        for record in unresolved:
-            _append_unique(record.example_tags, "MissingSource")
-            _append_unique(record.review_reasons, "annotation_not_found")
-            skipped_sources.append({'paragraph_index': record.index, 'word': record.front,
-                                    'source': record.href, 'reason': 'annotation_not_found_or_deleted'})
-        valid = [record for record in valid if record not in unresolved]
+    valid, contexts, skipped_sources = _resolve_record_sources(
+        connection, records, data_dir, strict_sources=strict_sources,
+        skip_invalid_sources=skip_invalid_sources)
     local_sentences = 0
     local_fragments = 0
     online_sentences = 0
@@ -792,8 +823,8 @@ def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = N
 
 def validate_records(records, note_title=''):
     damaged = [record.index for record in records
-               if (record.front or record.code_count) and
-               (not record.front or not source_identity(record.href) or record.link_count != 1)]
+               if record.outside_paragraph or ((record.front or record.code_count) and
+               (not record.front or not source_identity(record.href) or record.link_count != 1))]
     damaged += [record.index for record in records if not record.front and record.raw_text and
                 not (record.index == 0 and record.raw_text == note_title) and record.index not in damaged]
     if damaged:
@@ -841,6 +872,10 @@ def export_note(
                 strict_sources=strict,
                 skip_invalid_sources=skip_invalid_sources,
             )
+        elif strict or skip_invalid_sources:
+            _valid, _contexts, skipped_sources = _resolve_record_sources(
+                connection, records, database.expanduser().resolve().parent,
+                strict_sources=strict, skip_invalid_sources=skip_invalid_sources)
     except ExportError as exc:
         if 'note' in locals():
             exc.binding = {'library_id': note.library_id, 'note_key': note.key}
@@ -884,6 +919,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_argument_parser().parse_args(argv)
     try:
         local_config.apply_config(args, require_collection=False)
+        local_config.check_output_directory(args.output_dir)
+        if args.cache is not None:
+            local_config.check_output_file(args.cache)
         note, _cards, stats, vocabulary_path, review_path, mode = export_note(
             args.database,
             args.note_title,
@@ -892,6 +930,7 @@ def main(argv: list[str] | None = None) -> int:
             online_fallback=not args.no_online,
             cache_path=args.cache,
             review_annotation_keys=args.review_annotation_keys,
+            strict=True,
             skip_invalid_sources=args.skip_invalid_sources,
         )
     except (ExportError, sqlite3.Error, OSError, RuntimeError) as exc:

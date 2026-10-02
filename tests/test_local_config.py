@@ -1,4 +1,6 @@
 import json
+import io
+from contextlib import redirect_stderr
 from pathlib import Path
 import subprocess
 import sys
@@ -94,6 +96,20 @@ class LocalConfigTests(unittest.TestCase):
         config.apply_config(args, require_collection=False)
         self.assertEqual(args.note_title, "Vocabulary")
         self.assertFalse(hasattr(args, "collection"))
+
+    def test_standalone_export_rejects_unignored_output_and_cache_before_source_access(self):
+        self.write_config(note_title='Vocabulary', output_dir=str(self.root / 'output'))
+        for flags in (['--output-dir', str(config.ROOT / 'unsafe-results')],
+                      ['--cache', str(config.ROOT / 'unsafe-cache.json')]):
+            with self.subTest(flags=flags), patch.object(exporter, 'open_database_readonly') as open_db, \
+                    redirect_stderr(io.StringIO()):
+                self.assertEqual(exporter.main(['--config', str(self.path), *flags]), 2)
+                open_db.assert_not_called()
+
+    def test_private_output_check_allows_ignored_and_external_paths(self):
+        config.check_output_directory(config.ROOT / 'dist')
+        config.check_output_file(config.ROOT / 'dist' / 'cache.json')
+        config.check_output_directory(self.root / 'output')
 
     def test_python_and_launcher_resolve_same_settings(self):
         self.write_config(note_title="测试笔记", collection="collection.anki2", no_online=False, review_annotation_keys=["testkey"])

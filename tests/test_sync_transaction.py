@@ -46,7 +46,7 @@ class TransactionTests(unittest.TestCase):
         return self.latest()
 
     def test_full_offline_cli_and_backup_restore(self):
-        with patch('urllib.request.urlopen', side_effect=AssertionError('Offline run made a network request')):
+        with patch('scripts.vocabulary_examples.urlopen', side_effect=AssertionError('Offline run made a network request')):
             self.assertEqual(self.run_cli(), 0)
         _, report = self.report()
         self.assertTrue(report['committed'])
@@ -69,6 +69,30 @@ class TransactionTests(unittest.TestCase):
         reports = [json.loads(p.read_text(encoding='utf-8')) for p in (self.root / 'output').glob('zot2anki-sync-*.json')]
         self.assertEqual(len(reports), 2)
         self.assertTrue(any(r['sync']['added'] == 0 for r in reports))
+
+    def test_offline_run_with_missing_pdf_never_requests_online_fallback(self):
+        (self.root / 'storage' / 'ATT' / 'paper.pdf').unlink()
+        with patch('scripts.vocabulary_examples.urlopen', side_effect=AssertionError('Offline request')) as request:
+            self.assertEqual(self.run_cli('--refresh-examples'), 0)
+            request.assert_not_called()
+        _, report = self.report()
+        self.assertFalse(report['privacy']['online_enabled'])
+        self.assertEqual(report['export']['local_sentences'], 0)
+        self.assertEqual(report['export']['online_sentences'], 0)
+
+    def test_nonparagraph_content_stops_before_any_collection_change(self):
+        import sqlite3
+        from contextlib import closing
+        self.assertEqual(self.run_cli(), 0)
+        before = storage.fingerprint(self.collection)
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.execute('update itemNotes set note=note || ?', ('<div>readiness: lost source link</div>',))
+            db.commit()
+        with self.assertRaisesRegex(sync.SyncError, '来源格式损坏'):
+            self.run_cli('--allow-large-removal', '--skip-invalid-sources')
+        self.assertEqual(storage.fingerprint(self.collection), before)
+        _, report = self.latest('failed_before_commit')
+        self.assertFalse(report['committed'])
 
     def test_journal_upgrade_preserves_identity_and_is_idempotent(self):
         import sqlite3

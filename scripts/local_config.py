@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,22 @@ ALLOWED_KEYS = TEXT_KEYS | {"no_online", "review_annotation_keys"}
 
 class ConfigError(RuntimeError):
     pass
+
+
+def check_output_file(path: Path) -> None:
+    """Keep private output/cache files out of versionable repository paths."""
+    root = ROOT.resolve()
+    path = path.expanduser().resolve()
+    if path.is_relative_to(root) and (root / '.git').exists():
+        result = subprocess.run(
+            ['git', 'check-ignore', '--no-index', '--quiet', str(path.relative_to(root))],
+            cwd=root)
+        if result.returncode != 0:
+            raise ConfigError('仓库内输出路径未被 Git 忽略，停止运行')
+
+
+def check_output_directory(output_dir: Path) -> None:
+    check_output_file(output_dir / 'privacy-probe.json')
 
 
 def _path(value: str | Path, base: Path) -> Path:

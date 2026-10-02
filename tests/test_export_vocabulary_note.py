@@ -1,4 +1,7 @@
 from pathlib import Path
+from contextlib import closing, redirect_stdout, redirect_stderr
+import io
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -9,6 +12,25 @@ from scripts.vocabulary_examples import ExtractionOutcome
 
 
 class VocabularyNoteParserTests(unittest.TestCase):
+    def test_strict_validation_rejects_text_outside_paragraphs(self):
+        valid = '<p><a href="zotero://open-pdf/library/items/ATT?annotation=ANN">one</a>: n. one</p>'
+        for extra in ('<div>two: lost source</div>', '<h2>Vocabulary</h2>',
+                      '<ul><li>two: lost source</li></ul>', 'unwrapped text'):
+            for note in (extra + valid, valid + extra):
+                with self.subTest(note=note):
+                    records = exporter.parse_note_html(note)
+                    with self.assertRaises(exporter.ExportError):
+                        exporter.validate_records(records, 'Vocabulary')
+
+    def test_strict_validation_accepts_wrappers_whitespace_and_title_paragraph(self):
+        records = exporter.parse_note_html(
+            '<div data-schema-version="9">\n<p>Vocabulary</p>\n'
+            '<div><p><a href="zotero://open-pdf/library/items/ATT?annotation=ANN">one</a>: n. one</p></div>'
+            '\n&nbsp;</div>')
+        exporter.validate_records(records, 'Vocabulary')
+        cards, _ = exporter.build_cards(records)
+        self.assertEqual([card.word for card in cards], ['one'])
+
     def test_parses_standard_paragraph_and_preserves_source(self):
         records = exporter.parse_note_html(
             '<p><a href="zotero://open-pdf/library/items/AAAA?page=2&amp;annotation=BBBB">readiness</a>: '
@@ -274,6 +296,28 @@ class SkippedSourceTests(unittest.TestCase):
     def test_default_still_stops_the_whole_run(self):
         with self.assertRaisesRegex(exporter.ExportError, "无法对应到有效 annotation"):
             self._enrich([self.valid, self.dead], strict_sources=True)
+
+    def test_standalone_cli_checks_sources_even_without_examples(self):
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.execute('UPDATE itemNotes SET note=note || ?', (
+                '<p><a href="' + self.dead.href + '">vanished</a>: <code>n. gone</code></p>',))
+            connection.commit()
+        config = self.root / 'settings.json'
+        output = self.root / 'output'
+        config.write_text(json.dumps({'database': str(self.database), 'note_title': 'Vocabulary',
+                                      'output_dir': str(output)}), encoding='utf-8')
+        args = ['--config', str(config), '--no-examples']
+        with patch.object(exporter, 'PdfExampleExtractor', side_effect=AssertionError('PDF requested')), \
+                patch('scripts.vocabulary_examples.urlopen', side_effect=AssertionError('network requested')), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(exporter.main(args), 2)
+            self.assertFalse(output.exists())
+            self.assertEqual(exporter.main(args + ['--skip-invalid-sources']), 0)
+        review = next(output.glob('*.review.tsv')).read_text(encoding='utf-8')
+        self.assertIn('vanished\tskipped_invalid_source', review)
+        tsv = next(path for path in output.glob('*.tsv') if not path.name.endswith('.review.tsv'))
+        self.assertIn('readiness', tsv.read_text(encoding='utf-8'))
+        self.assertNotIn('vanished', tsv.read_text(encoding='utf-8'))
 
     def test_skip_reports_the_dead_entry_and_keeps_the_rest(self):
         stats, skipped = self._enrich([self.valid, self.dead], strict_sources=True,
