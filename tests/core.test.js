@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
 const core = require("../core.js");
 
 test("normalizes vocabulary text and creates a case-insensitive dedupe key", () => {
@@ -139,7 +141,47 @@ test("serializes Anki headers and exactly three tab-separated columns", () => {
 
 test("legacy Front escapes HTML exactly once and matches old escaped words", () => {
   assert.equal(core.makeDedupeKey("&lt;word&gt;"), core.makeDedupeKey("<word>"));
-  const rendered = core.serializeTSV([{front: "&lt;word&gt;", back: "meaning", tags: []}]);
+  const rendered = core.serializeTSV(core.buildCards([{text: "&lt;word&gt;", comment: "meaning"}]));
   assert.ok(rendered.includes("&lt;word&gt;"));
   assert.ok(!rendered.includes("&amp;lt;"));
+});
+
+test("legacy input is decoded once before grouping and plain Front is only escaped", () => {
+  const cards = core.buildCards([
+    { text: "&amp;lt;word&amp;gt;" },
+    { text: "&lt;word&gt;" }
+  ]);
+  assert.equal(cards.length, 2);
+  assert.deepEqual(new Set(cards.map(card => card.front)), new Set(["&lt;word&gt;", "<word>"]));
+  const rendered = core.serializeTSV(cards);
+  assert.ok(rendered.includes("&amp;lt;word&amp;gt;"));
+  assert.ok(rendered.includes("\n&lt;word&gt;\t"));
+});
+
+test("plugin export reads full preference names from the global branch", async () => {
+  const saved = { "extensions.zotero2anki.filterColor": "#00ff00", "extensions.zotero2anki.tagKeyword": "custom" };
+  const alerts = [];
+  const queried = [];
+  const context = {
+    Zot2AnkiCore: core,
+    Services: { prompt: { alert(_window, _title, message) { alerts.push(message); } } },
+    Zotero: {
+      locale: "en-US",
+      Prefs: { get(name, global) {
+        const key = global ? name : `extensions.zotero.${name}`;
+        queried.push(key);
+        return saved[key];
+      } },
+      Search: class { addCondition() {} async search() { return []; } },
+      ProgressWindow: class { changeHeadline() {} addDescription() {} show() {} close() {} },
+      logError(error) { throw error; }
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(require.resolve("../zot2anki.js"), "utf8"), context);
+  await context.Zot2Anki.exportCurrentLibrary({ ZoteroPane: { getSelectedLibraryIDs: () => [1] } });
+  assert.deepEqual(queried, Object.keys(saved));
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /#00ff00/);
+  assert.match(alerts[0], /custom/);
 });

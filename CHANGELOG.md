@@ -2,13 +2,25 @@
 
 ## Unreleased
 
+- Preserve quotes, trailing backslashes and the caller's working directory when forwarding Windows launcher arguments; verify actual child-process arguments.
+- Compare managed Anki tags without case sensitivity so restored entries and newly found examples clear their old status tags, including during legacy adoption.
+- Reject nonempty text before a paragraph's vocabulary link and keep literal HTML entity text distinct through matching and export.
+- Select PDF sentences by the highlighted occurrence and cache page text and canonical source lookups to avoid repeated extraction and database queries.
+- Give clean packages an independent public build revision so default imports update revised definitions while retaining stable sharing identities.
+- Stream package media when rewriting ZIP files; parse shared template resources once per note type and support whitespace in CSS URLs.
+- Read legacy Zotero plugin preferences using their full global keys and decode legacy Front input only once.
+- Accept a leading plain `h1`–`h6` heading matching the Zotero Note title without weakening checks on other text outside vocabulary paragraphs.
+- Clarify application-running preflight failures, including when no report is created; replace simulated launcher stages with activity and elapsed time.
 - Reject nonempty text outside vocabulary paragraphs before matching, preventing unparsed entries from becoming missing cards.
 - Preserve partially skipped legacy notes during first adoption when all remaining sources match uniquely; retain their full identities for later restoration.
 - Apply strict source validation and repository output/cache protection to the standalone TSV CLI, including source checks with `--no-examples`.
 - Correct the offline regression's network interception and cover missing-PDF fallback, first adoption and malformed-note failures with synthetic data.
-- Clarify that the runtime gate accepts Anki backends 26.5 / 26.9, not every Anki 26 release.
+- Replace the exact Anki version gate with an automatic capability probe in temporary synthetic collections before personal database access. Compatible Anki updates need no allowlist edit; note creation/updates, identity/review preservation and package export/import are checked on each run. Actual incompatibilities still stop before changes to the original collection.
+- Keep Anki 26.5 / 26.9 in Windows CI and add an unpinned latest-stable backend job.
 
-未发布修复：阻止段落外内容被漏解析；修复部分来源失效时旧卡首次接管；统一 TSV 入口来源和输出检查；补充离线及身份保留回归；明确 Anki 精确版本范围。
+未发布修复：兼容与笔记名称一致的开头标题；阻止其他段落外内容被漏解析；明确应用未退出时的提示及报告状态；修复部分来源失效时旧卡首次接管；统一 TSV 入口来源和输出检查；补充离线及身份保留回归；Anki 版本白名单改为每次运行自动探测实际兼容能力，更新版本无需改名单，接口或格式确实不兼容时仍保护原库并报错；CI 保留原有基线并检查最新稳定后端。
+
+本轮审查修复：正确传递 Windows 参数并保留调用目录；清除不同大小写的过期状态标签；拒绝来源链接前的漏解析内容；按 PDF 高亮位置提取例句；让 clean 修订包支持默认更新；修复 CSS 资源、HTML 实体和旧插件偏好读取，并减少重复查询、解析及制包内存占用。
 
 ## 0.2.0-rc.4
 

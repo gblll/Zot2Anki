@@ -138,6 +138,43 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(self.col.db.all('select * from notes order by id'), before)
         self.assertIn('personal', self.col.get_note(note_id).tags)
 
+    def test_registered_tag_case_preserves_missing_and_example_lifecycle(self):
+        private = self.col.new_note(self.model)
+        private['Word'] = 'private'
+        private.tags = ['noexample', 'missingfromzotero', 'zotero2anki']
+        self.col.add_note(private, self.deck)
+        one, two = card('one', 'A'), card('two', 'B')
+        one.tags += ['NoExample']
+        self.run_sync([one, two])
+        nid = self.col.find_notes('one')[0]
+        self.assertIn('noexample', self.col.get_note(nid).tags)
+        one.tags = ['Zotero2Anki', 'OnlineExample']
+        self.run_sync([one, two])
+        self.assertNotIn('noexample', self.col.get_note(nid).tags)
+        with patch.object(self.col, 'update_note', wraps=self.col.update_note) as update:
+            self.assertEqual(self.run_sync([one, two])['unchanged'], 2)
+            update.assert_not_called()
+        self.run_sync([two])
+        self.assertIn('missingfromzotero', self.col.get_note(nid).tags)
+        with patch.object(self.col, 'update_note', wraps=self.col.update_note) as update:
+            self.assertEqual(self.run_sync([two])['marked_missing'], 0)
+            update.assert_not_called()
+        result = self.run_sync([one, two])
+        self.assertEqual(result['restored'], 1)
+        self.assertNotIn('missingfromzotero', self.col.get_note(nid).tags)
+        self.assertEqual(self.col.get_note(private.id).tags, ['missingfromzotero', 'noexample', 'zotero2anki'])
+
+    def test_legacy_adoption_accepts_registered_tag_case(self):
+        old = self.col.new_note(self.model)
+        old['Word'] = 'one'
+        old['Source'] = card('one', 'B', 'A').source_html
+        old.tags = ['zotero2anki']
+        self.col.add_note(old, self.deck)
+        result = self.run_sync([card('renamed', 'A', 'B')])
+        self.assertEqual(result['added'], 0)
+        self.assertEqual(result['migrated_zotero_keys'], 1)
+        self.assertEqual(self.col.get_note(old.id)['Word'], 'renamed')
+
     def test_unowned_notes_are_neither_word_matched_nor_missing(self):
         private = self.col.new_note(self.model)
         private['Word'] = 'one'
@@ -221,7 +258,15 @@ class IdentityTests(unittest.TestCase):
 
     def test_escaped_word_fallback_is_managed_only(self):
         self.run_sync([card('<word>', 'A')])
-        self.run_sync([card('&lt;word&gt;', 'B')])
+        self.run_sync([card('<word>', 'B')])
         notes = self.col.find_notes('note:"' + sync.DEFAULT_NOTETYPE + '"')
         self.assertEqual(len(notes), 1)
         self.assertEqual(self.col.get_note(notes[0])['Word'], '&lt;word&gt;')
+
+    def test_literal_entities_do_not_alias_rendered_word_in_fallback(self):
+        self.run_sync([card('<word>', 'A'), card('&lt;word&gt;', 'B')])
+        original = {self.col.get_note(nid)['Word']: nid for nid in self.col.find_notes('tag:Zotero2Anki')}
+        self.assertEqual(set(original), {'&lt;word&gt;', '&amp;lt;word&amp;gt;'})
+        result = self.run_sync([card('<word>', 'C'), card('&lt;word&gt;', 'D')])
+        self.assertEqual(result['added'], 0)
+        self.assertEqual({self.col.get_note(nid)['Word']: nid for nid in self.col.find_notes('tag:Zotero2Anki')}, original)

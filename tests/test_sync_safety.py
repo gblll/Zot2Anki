@@ -7,10 +7,16 @@ import tempfile
 import unittest
 
 from scripts import sync_storage as storage
-from scripts.source_identity import source_identity, identities_from_html
+from scripts.source_identity import source_identity, identities_from_html, escaped_word, word_identity
 
 
 class SourceIdentityTests(unittest.TestCase):
+    def test_word_html_is_decoded_only_at_the_storage_boundary(self):
+        for word in ('<word>', '&lt;word&gt;', '&amp;lt;word&amp;gt;', 'A&B'):
+            with self.subTest(word=word):
+                self.assertEqual(word_identity(escaped_word(word), html_encoded=True), word_identity(word))
+        self.assertNotEqual(word_identity('<word>'), word_identity('&lt;word&gt;'))
+
     def test_identity_includes_library_attachment_and_annotation(self):
         a = 'zotero://open-pdf/library/items/ATT?page=1&annotation=ANN'
         b = 'zotero://open-pdf/groups/123/items/ATT?page=1&annotation=ANN'

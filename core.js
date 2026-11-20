@@ -109,7 +109,8 @@ var Zot2AnkiCore = (() => {
 
     for (const record of sortedRecords) {
       const front = normalizeFront(record.text);
-      const key = makeDedupeKey(front);
+      // Records cross the legacy HTML boundary above; the normalized text is plain.
+      const key = front.toLowerCase();
       if (!key) continue;
 
       let group = groups.get(key);
@@ -226,7 +227,7 @@ var Zot2AnkiCore = (() => {
 
   function serializeTSV(cards) {
     const rows = (cards || []).map((card) => [
-      sanitizeTSVCell(escapeHTML(decodeFront(card.front))),
+      sanitizeTSVCell(escapeHTML(card.front)),
       sanitizeTSVCell(card.back),
       sanitizeTSVCell((card.tags || []).join(" "))
     ].join("\t"));

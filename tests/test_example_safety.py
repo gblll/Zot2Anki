@@ -35,6 +35,14 @@ class ExampleSafetyTests(unittest.TestCase):
                 self.assertEqual(client.find('C').text, 'C')
                 self.assertEqual(request.call_count, 2)
 
+    def test_literal_entity_terms_do_not_share_a_cache_entry(self):
+        with tempfile.TemporaryDirectory() as root:
+            client = examples.AcademicExampleClient(Path(root) / 'cache.json')
+            with patch.object(client, '_crossref', side_effect=lambda term: examples.ExampleCandidate(term, 'online')) as request:
+                for term in ('&lt;word&gt;', '<word>', '&lt;word&gt;'):
+                    self.assertEqual(client.find(term).text, term)
+                self.assertEqual(request.call_count, 2)
+
     def test_positive_negative_expiry_and_refresh(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / 'cache.json'
@@ -87,14 +95,46 @@ class ExampleSafetyTests(unittest.TestCase):
     def test_tsv_escaping_and_existing_files(self):
         from tests.test_sync_identity import card
         item = card('&lt;word&gt;', 'A')
-        self.assertIn('&lt;word&gt;', exporter.serialize_anki_tsv([item]))
-        self.assertNotIn('&amp;lt;', exporter.serialize_anki_tsv([item]))
+        self.assertIn('&amp;lt;word&amp;gt;', exporter.serialize_anki_tsv([item]))
         with tempfile.TemporaryDirectory() as root:
             paths = exporter.write_exports([item], Path(root), 'test')
             before = paths[0].read_bytes()
             with self.assertRaises(exporter.ExportError):
                 exporter.write_exports([], Path(root), 'test')
             self.assertEqual(paths[0].read_bytes(), before)
+
+    def test_source_lookup_caches_namespaces_and_deduplicates_source_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = create_source(root)
+            db = sqlite3.connect(database)
+            try:
+                db.executescript('''
+                    INSERT INTO items VALUES (10, 'ANN', 2), (11, 'ATT', 2), (12, 'PARENT2', 2);
+                    INSERT INTO itemAnnotations VALUES (10,11,'group word','2','{}');
+                    INSERT INTO itemAttachments VALUES (11,12,'storage:group.pdf');
+                ''')
+                queries = []
+                db.set_trace_callback(queries.append)
+                hrefs = [
+                    'zotero://open-pdf/library/items/ATT?annotation=ANN',
+                    'zotero://open-pdf/library/items/att?page=1&annotation=ann',
+                    'zotero://open-pdf/library/items/ATT?annotation=MISSING',
+                    'zotero://open-pdf/library/items/att?annotation=missing&page=2',
+                    'zotero://open-pdf/groups/123/items/ATT?annotation=ANN',
+                    'zotero://open-pdf/groups/123/items/att?page=3&annotation=ann',
+                    'zotero://open-pdf/groups/123/items/ATT?annotation=MISSING',
+                    'zotero://open-pdf/groups/999/items/ATT?annotation=ANN',
+                    'zotero://open-pdf/groups/999/items/ATT?annotation=MISSING',
+                ]
+                contexts = examples.load_source_contexts(db, hrefs, root)
+                self.assertEqual(set(contexts), {'library/ATT/ANN', 'groups/123/ATT/ANN'})
+                self.assertEqual(contexts['library/ATT/ANN'].href, hrefs[0])
+                self.assertEqual(sum('FROM libraries' in sql for sql in queries), 1)
+                self.assertEqual(sum('FROM groups' in sql for sql in queries), 2)
+                self.assertEqual(sum('FROM itemAnnotations AS annotation' in sql for sql in queries), 4)
+            finally:
+                db.close()
 
     def test_lost_source_link_cannot_silently_become_a_missing_note(self):
         records = exporter.parse_note_html('<p>Vocabulary</p><p>readiness: <code>n. meaning</code></p>')

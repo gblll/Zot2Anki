@@ -3,6 +3,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.error import URLError
 
 from scripts import export_vocabulary_note as exporter
@@ -20,6 +21,14 @@ class TextRecoveryTests(unittest.TestCase):
         self.assertIsNotNone(examples.find_term_span(text, "microperforated plate"))
         rendered = examples.highlight_term(text, "microperforated plate")
         self.assertIn('<strong class="z2a-example-word">micro- perforated plate</strong>', rendered)
+
+    def test_plain_terms_keep_literal_html_entities(self):
+        text = "The literal &lt;word&gt; token remains distinct from the <word> token."
+        span = examples.find_term_span(text, "&lt;word&gt;")
+        self.assertEqual(text[slice(*span)], "&lt;word&gt;")
+        self.assertIsNone(examples.find_term_span("A <word> token.", "&lt;word&gt;"))
+        self.assertIn('&amp;lt;word&amp;gt;</strong>', examples.highlight_term(text, "&lt;word&gt;"))
+        self.assertNotEqual(examples.normalize_for_match("&lt;word&gt;"), examples.normalize_for_match("<word>"))
 
     def test_complete_sentence_and_fragment(self):
         sentence = "Earlier work showed that readiness strongly influences the final response."
@@ -90,6 +99,129 @@ class SourceAssociationTests(unittest.TestCase):
             self.assertEqual(context.doi, "10.1/test")
             self.assertEqual(context.attachment_path, (Path(directory) / "storage" / "ATTKEY" / "paper.pdf").resolve())
         connection.close()
+
+
+class PdfAnchorTests(unittest.TestCase):
+    @staticmethod
+    def make_pdf(path, lines, *, pages=1):
+        import pymupdf
+        contexts = []
+        with pymupdf.open() as document:
+            for page_index in range(pages):
+                page = document.new_page()
+                for y, text in lines:
+                    page.insert_text((72, y), text, fontsize=10)
+                matches = page.search_for("readiness")
+                for rect in matches:
+                    contexts.append(examples.SourceContext(
+                        "ANN", "ATT", path, "readiness", str(page_index + 1), page_index,
+                        (tuple(rect * ~page.transformation_matrix),), "Synthetic paper", "",
+                        "zotero://open-pdf/library/items/ATT?annotation=ANN"))
+            document.save(path)
+        return contexts
+
+    def test_same_block_repeated_term_uses_highlighted_occurrence(self):
+        first = "Earlier readiness studies reported entirely different baseline observations."
+        second = "The later readiness result was measured carefully in our experiment."
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "repeated.pdf"
+            contexts = self.make_pdf(path, [(72, first + "\n" + second)])
+            with examples.PdfExampleExtractor() as extractor:
+                self.assertEqual(extractor.extract(contexts[0], "readiness").example.text, first)
+                self.assertEqual(extractor.extract(contexts[1], "readiness").example.text, second)
+
+    def test_neighbor_blocks_keep_highlighted_occurrence(self):
+        first = "Earlier readiness studies reported entirely different baseline observations."
+        beginning = "The second readiness result"
+        ending = "was measured carefully in the follow-up experiment."
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "neighbors.pdf"
+            contexts = self.make_pdf(path, [(72, first), (104, beginning), (136, ending)])
+            with examples.PdfExampleExtractor() as extractor:
+                outcome = extractor.extract(contexts[1], "readiness")
+                self.assertEqual(outcome.example.kind, "local_sentence")
+                self.assertEqual(outcome.example.text, beginning + " " + ending)
+
+    def test_cross_line_hyphen_keeps_pdf_anchor_after_text_repair(self):
+        import pymupdf
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "hyphen.pdf"
+            with pymupdf.open() as document:
+                page = document.new_page()
+                page.insert_text((72, 72), "The micro-\nperforated plate provides an effective acoustic absorber.", fontsize=10)
+                rect = page.search_for("perforated")[0] * ~page.transformation_matrix
+                context = examples.SourceContext("ANN", "ATT", path, "microperforated plate", "1", 0,
+                                                 (tuple(rect),), "Synthetic", "", "")
+                document.save(path)
+            with examples.PdfExampleExtractor() as extractor:
+                outcome = extractor.extract(context, "microperforated plate")
+                self.assertEqual(outcome.example.text, "The microperforated plate provides an effective acoustic absorber.")
+
+    def test_fragment_is_centered_on_highlighted_occurrence(self):
+        text = "readiness " + "baseline " * 28 + "readiness " + "target " * 24
+        import pymupdf
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fragment.pdf"
+            with pymupdf.open() as document:
+                page = document.new_page()
+                page.insert_textbox(pymupdf.Rect(72, 72, 500, 500), text, fontsize=10)
+                rect = page.search_for("readiness")[1] * ~page.transformation_matrix
+                context = examples.SourceContext("ANN", "ATT", path, "readiness", "1", 0,
+                                                 (tuple(rect),), "Synthetic", "", "")
+                document.save(path)
+            with examples.PdfExampleExtractor() as extractor:
+                outcome = extractor.extract(context, "readiness")
+                self.assertEqual(outcome.example.kind, "local_fragment")
+                self.assertFalse(outcome.example.text.startswith("readiness"))
+                self.assertIn("target", outcome.example.text)
+
+    def test_unrelated_highlight_does_not_adopt_another_occurrence(self):
+        import pymupdf
+        text = "The readiness value was compared with an unrelated baseline measurement."
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "unrelated.pdf"
+            self.make_pdf(path, [(72, text)])
+            with pymupdf.open(path) as document:
+                page = document[0]
+                rect = page.search_for("unrelated")[0] * ~page.transformation_matrix
+            context = examples.SourceContext("ANN", "ATT", path, "unrelated", "1", 0,
+                                             (tuple(rect),), "Synthetic", "", "")
+            with examples.PdfExampleExtractor() as extractor:
+                outcome = extractor.extract(context, "readiness")
+                self.assertIsNone(outcome.example)
+                self.assertIn("ExampleNeedsReview", outcome.tags)
+
+    def test_page_text_is_reused_and_lru_eviction_reloads_only_evicted_page(self):
+        import pymupdf
+        text = "The readiness metric was evaluated carefully across all enrolled participants."
+        with tempfile.TemporaryDirectory() as directory:
+            contexts = self.make_pdf(Path(directory) / "pages.pdf", [(72, text)], pages=2)
+            get_text = pymupdf.Page.get_text
+            calls = []
+
+            def counted(page, option, **kwargs):
+                calls.append((page.number, option))
+                return get_text(page, option, **kwargs)
+
+            with patch.object(pymupdf.Page, "get_text", counted), examples.PdfExampleExtractor(max_cached_pages=1) as extractor:
+                for context in (contexts[0], contexts[0], contexts[1], contexts[1], contexts[0]):
+                    self.assertEqual(extractor.extract(context, "readiness").example.text, text)
+                self.assertEqual(calls, [(0, "words"), (0, "blocks"), (1, "words"), (1, "blocks"), (0, "words"), (0, "blocks")])
+
+    def test_document_cache_closes_evicted_pdfs_and_large_pages_skip_text_cache(self):
+        text = "The readiness metric was evaluated carefully across all enrolled participants."
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.make_pdf(Path(directory) / "first.pdf", [(72, text)])[0]
+            second = self.make_pdf(Path(directory) / "second.pdf", [(72, text)])[0]
+            with examples.PdfExampleExtractor(max_cached_documents=1, max_cached_text_bytes=1) as extractor:
+                self.assertEqual(extractor.extract(first, "readiness").example.text, text)
+                first_document = extractor._document(first.attachment_path)
+                self.assertEqual(extractor.extract(second, "readiness").example.text, text)
+                self.assertTrue(first_document.is_closed)
+                self.assertFalse(extractor._pages)
+                second_document = extractor._document(second.attachment_path)
+            self.assertTrue(second_document.is_closed)
+            self.assertFalse(extractor._pages)
 
 
 class OnlineExampleTests(unittest.TestCase):

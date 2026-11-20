@@ -1,18 +1,11 @@
 @echo off
 setlocal
 chcp 65001 >nul
-cd /d "%~dp0"
 title Zot2Anki Sync
 
 echo.
 echo  Zot2Anki Sync
-echo  Preparing synchronization...
-echo.
-echo  [      ] Loading configuration
-ping 127.0.0.1 -n 2 >nul
-echo  [==    ] Checking local files
-ping 127.0.0.1 -n 2 >nul
-echo  [====  ] Starting sync engine
+echo  Starting sync engine...
 echo.
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_vocabulary.ps1" %*
@@ -21,7 +14,7 @@ set "sync_exit=%ERRORLEVEL%"
 if not "%sync_exit%"=="0" (
   echo.
   echo Zot2Anki sync failed with exit code %sync_exit%.
-  echo Review the error above and the run report before retrying.
+  echo Follow the instructions above. If a report path is shown, review that report.
   pause
 )
 

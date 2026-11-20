@@ -23,6 +23,38 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 
+function ConvertTo-WindowsCommandLine {
+    param([string[]]$Arguments)
+
+    # Windows PowerShell 5.1 has no ProcessStartInfo.ArgumentList. For the
+    # Windows argv parser, double backslashes before quotes and at the end of
+    # a quoted argument, then escape each literal quote with one backslash.
+    ($Arguments | ForEach-Object {
+        $value = [regex]::Replace([string]$_, '(\\*)"', '$1$1\"')
+        $value = [regex]::Replace($value, '(\\+)$', '$1$1')
+        '"' + $value + '"'
+    }) -join ' '
+}
+
+function Start-RedirectedProcess {
+    param([string]$FilePath, [string[]]$Arguments)
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.WorkingDirectory = (Get-Location).ProviderPath
+    $psi.Arguments = ConvertTo-WindowsCommandLine -Arguments $Arguments
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    $psi.CreateNoWindow = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    [void]$process.Start()
+    return $process
+}
+
 function Disable-ConsoleQuickEdit {
     try {
         if ($null -eq ("Zot2AnkiConsoleMode" -as [type])) {
@@ -92,8 +124,9 @@ function Restore-ConsoleMode {
 
 $consoleModeState = Disable-ConsoleQuickEdit
 $scriptExitCode = 1
+$process = $null
 try {
-    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
     $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
         throw "Project .venv is missing. Run scripts/setup.ps1 first."
@@ -116,31 +149,21 @@ try {
     # Python emits a short status and the journal path, not private report contents.
     # Run Python asynchronously so the console stays alive and informative while
     # a large library is being synchronized.
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $python
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.CreateNoWindow = $true
-    # Windows PowerShell 5.1 has no ArgumentList property; quote each argument.
-    $psi.Arguments = (($arguments | ForEach-Object {
-        '"' + ($_.ToString() -replace '"', '\\"') + '"'
-    }) -join ' ')
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
-    [void]$process.Start()
+    $process = Start-RedirectedProcess -FilePath $python -Arguments $arguments
     # Drain both streams concurrently so neither redirected pipe can fill and
     # block a long-running synchronization.
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
     $started = Get-Date
     $frames = @('|', '/', '-', '\')
-    $tips = @('Indexing references...','Checking vocabulary changes...','Almost there...','Time for a sip of water...')
+    $activity = if ($Check) { 'Checking environment...' }
+                elseif ($Recover) { 'Recovering outputs...' }
+                elseif ($DryRun) { 'Planning synchronization...' }
+                else { 'Synchronizing...' }
     $frameIndex = 0
     while (-not $process.HasExited) {
         $elapsed = [int]((Get-Date) - $started).TotalSeconds
-        $tipIndex = [Math]::Min([int]($elapsed / 8), $tips.Count - 1)
-        Write-Host ("`r  [{0}] {1} ({2}s)   " -f $frames[$frameIndex % $frames.Count], $tips[$tipIndex], $elapsed) -NoNewline
+        Write-Host ("`r  [{0}] {1} ({2}s)   " -f $frames[$frameIndex % $frames.Count], $activity, $elapsed) -NoNewline
         $frameIndex++
         Start-Sleep -Milliseconds 250
     }
@@ -165,11 +188,23 @@ try {
             foreach ($name in $overrides.Keys) {
                 if ($name -ne "recover" -and $overrides[$name]) { $configArguments += @("--$name", $overrides[$name]) }
             }
-            $settings = (& $python @configArguments) | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0) { throw "Cannot resolve Anki launch settings." }
+            $configProcess = Start-RedirectedProcess -FilePath $python -Arguments $configArguments
+            try {
+                $configStdoutTask = $configProcess.StandardOutput.ReadToEndAsync()
+                $configStderrTask = $configProcess.StandardError.ReadToEndAsync()
+                $configProcess.WaitForExit()
+                $configStdout = $configStdoutTask.GetAwaiter().GetResult()
+                $configStderr = $configStderrTask.GetAwaiter().GetResult()
+                if ($configProcess.ExitCode -ne 0) { throw "Cannot resolve Anki launch settings. $configStderr" }
+                $settings = $configStdout | ConvertFrom-Json
+            }
+            finally {
+                $configProcess.Dispose()
+            }
             $ankiExe = $settings.anki_exe
             if (Test-Path -LiteralPath $ankiExe -PathType Leaf) {
-                Start-Process -FilePath $ankiExe -ArgumentList @("-b", "`"$($settings.anki_root)`"", "-p", "`"$($report.profile)`"")
+                $ankiArguments = ConvertTo-WindowsCommandLine -Arguments @("-b", $settings.anki_root, "-p", $report.profile)
+                Start-Process -FilePath $ankiExe -ArgumentList $ankiArguments
             }
         }
     }
@@ -179,6 +214,7 @@ catch {
     $scriptExitCode = 2
 }
 finally {
+    if ($null -ne $process) { $process.Dispose() }
     Restore-ConsoleMode $consoleModeState
 }
 exit $scriptExitCode

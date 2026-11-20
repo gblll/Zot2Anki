@@ -9,6 +9,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import time
 import zipfile
 
 try:
@@ -81,15 +82,24 @@ def share_fields(card):
 
 def copy_required_media(collection, note_ids, source_media: Path) -> list[str]:
     required = set()
+    scanned_models = set()
     for nid in note_ids:
         note = collection.get_note(nid)
         required.update(collection.media.files_in_str(note.mid, '\x1f'.join(note.fields)))
         # Referenced template resources, including Anki's underscore convention,
         # are copied by name only. Do not copy all underscore files in a profile.
+        if note.mid in scanned_models:
+            continue
+        scanned_models.add(note.mid)
         model = note.note_type()
         for value in [model['css']] + [t[k] for t in model['tmpls'] for k in ('qfmt', 'afmt')]:
             required.update(collection.media.files_in_str(note.mid, value))
-            required.update(re.findall(r'url\([\'\"]?([^\)\'\"]+)', value))
+            for match in re.finditer(r'''\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^'"()]*?))\s*\)''', value, re.I):
+                name = next(part for part in match.groups() if part is not None)
+                if match[3] is not None:
+                    name = name.strip()
+                if name:
+                    required.add(name)
     target = Path(collection.media.dir())
     copied = []
     for name in sorted(required):
@@ -107,32 +117,56 @@ def copy_required_media(collection, note_ids, source_media: Path) -> list[str]:
     return copied
 
 
-def _rewrite_package(path, *, clean=False):
+def _rewrite_package(path, *, clean=False, build_revision=None):
     # The legacy compatibility database is replaced with the same audited
     # collection, so validators and older importers see no hidden second dataset.
-    with tempfile.TemporaryDirectory(prefix='zot2anki-package-') as root:
+    path = Path(path)
+    if clean and (not isinstance(build_revision, int) or build_revision <= 0):
+        raise StorageError('clean 缺少公开构建时间')
+    with tempfile.TemporaryDirectory(prefix='.zot2anki-package-', dir=path.parent) as root:
         database = Path(root) / 'raw.sqlite'
+        rewritten = Path(root) / 'rewritten.apkg'
         with zipfile.ZipFile(path) as original:
-            database.write_bytes(original.read('collection.anki21'))
-            extras = {n: original.read(n) for n in original.namelist() if n not in ('collection.anki21', 'collection.anki2')}
-        if clean:
-            with closing(sqlite3.connect(database)) as db:
-                db.execute("update col set conf='{}',dconf=?,tags='{}',crt=0,mod=0,scm=0,ls=0,usn=0", (json.dumps(SHARE_DCONF),))
-                db.execute('update col set models=?,decks=?', (json.dumps({str(SHARE_MODEL_ID): share_model()}), json.dumps(share_decks())))
-                db.execute('update notes set mid=?', (SHARE_MODEL_ID,))
-                db.execute('update cards set did=?', (SHARE_DECK_ID,))
-                db.execute("update notes set mod=0,usn=0,tags='',flags=0,data=''")
-                db.execute("update cards set mod=0,usn=0,type=0,queue=0,due=0,ivl=0,factor=0,reps=0,lapses=0,left=0,odue=0,odid=0,flags=0,data=''")
-                db.execute('delete from revlog')
-                db.execute('delete from graves')
-                db.commit()
-                db.execute('vacuum')
-        data = database.read_bytes()
-        with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as output:
-            for name, value in extras.items():
-                output.writestr(name, value)
-            output.writestr('collection.anki21', data)
-            output.writestr('collection.anki2', data)
+            with original.open('collection.anki21') as source, database.open('wb') as target:
+                shutil.copyfileobj(source, target, 1024 * 1024)
+            if clean:
+                with closing(sqlite3.connect(database)) as db:
+                    db.execute("update col set conf='{}',dconf=?,tags='{}',crt=0,mod=0,scm=0,ls=0,usn=0", (json.dumps(SHARE_DCONF),))
+                    db.execute('update col set models=?,decks=?', (json.dumps({str(SHARE_MODEL_ID): share_model()}), json.dumps(share_decks())))
+                    db.execute('update notes set mid=?', (SHARE_MODEL_ID,))
+                    db.execute('update cards set did=?', (SHARE_DECK_ID,))
+                    # This is the package's public build time, never a private
+                    # note timestamp. Anki's default import policy needs it to
+                    # distinguish a revised definition from an older package.
+                    db.execute("update notes set mod=?,usn=0,tags='',flags=0,data=''", (build_revision,))
+                    db.execute("update cards set mod=0,usn=0,type=0,queue=0,due=0,ivl=0,factor=0,reps=0,lapses=0,left=0,odue=0,odid=0,flags=0,data=''")
+                    db.execute('delete from revlog')
+                    db.execute('delete from graves')
+                    db.commit()
+                    db.execute('vacuum')
+            # Copy media one entry at a time, so even large personal packages
+            # need only a bounded buffer rather than all decompressed media.
+            with zipfile.ZipFile(rewritten, 'w', compression=zipfile.ZIP_DEFLATED) as output:
+                for entry in original.infolist():
+                    if entry.filename not in ('collection.anki21', 'collection.anki2'):
+                        with original.open(entry) as source, output.open(entry.filename, 'w', force_zip64=True) as target:
+                            shutil.copyfileobj(source, target, 1024 * 1024)
+                output.write(database, 'collection.anki21')
+                output.write(database, 'collection.anki2')
+        rewritten.replace(path)
+
+
+def _wait_for_next_build_second(build_revision):
+    """Give sequential builds distinct Anki second-resolution timestamps.
+
+    A monotonic deadline bounds this wait even if the system clock changes.
+    Independently concurrent builds do not define an ordered revision stream.
+    """
+    deadline = time.monotonic() + 1.05
+    while (remaining := build_revision + 1 - time.time()) > 0:
+        if remaining > 1.05 or time.monotonic() >= deadline:
+            raise StorageError('系统时钟发生变化，无法确认 clean 构建版本；请校正时间后重试')
+        time.sleep(min(remaining, 0.05))
 
 
 def export_personal(collection, note_ids, path):
@@ -182,14 +216,17 @@ def build_clean(Collection, cards, path):
             export_personal(collection, note_ids, path)
         finally:
             collection.close()
-    _rewrite_package(path, clean=True)
-    result = validate_package(path, clean=True, expected_fields=expected)
+    build_revision = int(time.time())
+    _rewrite_package(path, clean=True, build_revision=build_revision)
+    result = validate_package(path, clean=True, expected_fields=expected, expected_build_revision=build_revision)
+    _wait_for_next_build_second(build_revision)
     result['omitted_unverified_local_sources'] = len(cards)
     result['omitted_local_examples'] = sum(e.kind != 'online' for c in cards for e in c.examples)
     return result
 
 
-def validate_package(path, *, clean=False, expected_note_ids=None, expected_fields=None, expected_personal=None):
+def validate_package(path, *, clean=False, expected_note_ids=None, expected_fields=None, expected_personal=None,
+                     expected_build_revision=None):
     """Inspect every physical DB and every media entry, before any importer runs."""
     with zipfile.ZipFile(path) as package, tempfile.TemporaryDirectory() as root:
         names = package.namelist()
@@ -202,9 +239,16 @@ def validate_package(path, *, clean=False, expected_note_ids=None, expected_fiel
             raise StorageError('APKG 含未声明文件')
         if clean and media:
             raise StorageError('clean 包含媒体')
+        database_hash = None
+        build_revision = None
         for name in ('collection.anki21', 'collection.anki2'):
             dbpath = Path(root) / name
-            dbpath.write_bytes(package.read(name))
+            with package.open(name) as source, dbpath.open('wb') as target:
+                shutil.copyfileobj(source, target, 1024 * 1024)
+            current_hash = sha256(dbpath)
+            if database_hash is not None and current_hash != database_hash:
+                raise StorageError('APKG 两份物理数据库不一致')
+            database_hash = current_hash
             with closing(sqlite3.connect(dbpath)) as db:
                 db.row_factory = sqlite3.Row
                 if db.execute('pragma integrity_check').fetchone()[0] != 'ok':
@@ -244,6 +288,8 @@ def validate_package(path, *, clean=False, expected_note_ids=None, expected_fiel
                         raise StorageError('clean 包含私人牌组')
                     if any(col[k] != '{}' for k in ('conf', 'tags')) or json.loads(col['dconf']) != SHARE_DCONF:
                         raise StorageError('clean 包含内部配置')
+                    if any(col[k] for k in ('crt', 'mod', 'scm', 'ls', 'usn')):
+                        raise StorageError('clean 集合元数据不符合允许名单')
                     if db.execute('select count(*) from revlog').fetchone()[0] or db.execute('select count(*) from graves').fetchone()[0]:
                         raise StorageError('clean 包含复习或删除日志')
                     actual = {}
@@ -251,16 +297,26 @@ def validate_package(path, *, clean=False, expected_note_ids=None, expected_fiel
                         fields = note['flds'].split('\x1f')
                         if len(fields) != 7 or fields[5:] != ['', ''] or note['tags'].strip() or note['data']:
                             raise StorageError('clean 字段/标签包含私人数据')
-                        if note['guid'] != share_guid(fields[0]) or note['guid'] in actual:
+                        if note['guid'] != share_guid(html.unescape(fields[0])) or note['guid'] in actual:
                             raise StorageError('clean GUID 不稳定或重复')
                         if re.search(r'zotero://|\[sound:|<(?:img|audio|video|script|iframe)\b', note['flds'], re.I):
                             raise StorageError('clean 含内部链接或媒体')
-                        if str(note['sfld']) != html.unescape(fields[0]) or note['flags'] or note['mod'] or note['usn']:
+                        revision = note['mod']
+                        # Zero remains valid for earlier clean packages. New
+                        # builds must exactly match their independently chosen
+                        # public timestamp, including both physical databases.
+                        if (not isinstance(revision, int) or
+                                not (revision == 0 or SHARE_MODEL_ID // 1000 <= revision <= int(time.time())) or
+                                (expected_build_revision is not None and revision != expected_build_revision) or
+                                (build_revision is not None and revision != build_revision)):
+                            raise StorageError('clean 构建时间不符合允许名单')
+                        build_revision = revision
+                        if str(note['sfld']) != html.unescape(fields[0]) or note['flags'] or note['usn']:
                             raise StorageError('clean 笔记元数据不符合允许名单')
                         actual[note['guid']] = fields
                     if expected_fields is not None and actual != expected_fields:
                         raise StorageError('clean 学习内容未通过允许名单')
                     for card in cards:
-                        if any(card[k] != 0 for k in ('type','queue','due','ivl','factor','reps','lapses','left','odue','odid','flags')) or card['data']:
+                        if any(card[k] != 0 for k in ('mod','usn','type','queue','due','ivl','factor','reps','lapses','left','odue','odid','flags')) or card['data']:
                             raise StorageError('clean 原始调度数据未清除')
         return {'validated': True, 'notes': len(notes), 'cards': len(cards), 'media': len(media), 'sha256': sha256(path)}

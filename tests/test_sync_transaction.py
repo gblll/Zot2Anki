@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from scripts import sync_vocabulary as sync, sync_storage as storage, sync_plan, sync_packages
 from tests.fixtures import create_config
@@ -18,6 +18,11 @@ class TransactionTests(unittest.TestCase):
         self.before = storage.fingerprint(self.collection)
         self.processes = patch.object(sync, '_running_applications', return_value=[])
         self.processes.start()
+        # Real backend compatibility is covered in test_runtime_check. Keep
+        # candidate-stage fault injection here scoped to the transaction itself.
+        self.runtime_probe = patch.object(sync.runtime_check, '_probe_backend')
+        self.runtime_probe.start()
+        self.addCleanup(self.runtime_probe.stop)
 
     def tearDown(self):
         self.processes.stop()
@@ -79,6 +84,21 @@ class TransactionTests(unittest.TestCase):
         self.assertFalse(report['privacy']['online_enabled'])
         self.assertEqual(report['export']['local_sentences'], 0)
         self.assertEqual(report['export']['online_sentences'], 0)
+
+    def test_adding_a_title_heading_preserves_existing_cards(self):
+        import sqlite3
+        from contextlib import closing
+        self.assertEqual(self.run_cli(), 0)
+        _, before = self.report()
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.execute('update itemNotes set note=? || note', ('<h2>Vocabulary</h2>',))
+            db.commit()
+        self.assertEqual(self.run_cli(), 0)
+        _, after = self.report()
+        self.assertEqual(after['sync']['owned_note_ids'], before['sync']['owned_note_ids'])
+        self.assertEqual(after['sync']['added'], 0)
+        self.assertEqual(after['sync']['marked_missing'], 0)
+        self.assertEqual(after['sync']['unchanged'], 1)
 
     def test_nonparagraph_content_stops_before_any_collection_change(self):
         import sqlite3
@@ -275,10 +295,50 @@ class TransactionTests(unittest.TestCase):
         with self.assertRaises(sync.SyncError):
             sync.check_output_directory(sync.local_config.ROOT / 'unsafe-results')
 
+    def test_unparsed_prefix_stops_before_marking_existing_notes_missing(self):
+        import sqlite3
+        from contextlib import closing
+        self.assertEqual(self.run_cli(), 0)
+        before = storage.fingerprint(self.collection)
+        with closing(sqlite3.connect(self.root / 'zotero.sqlite')) as db:
+            db.execute('UPDATE itemNotes SET note=?', (
+                '<p>readiness: <code>n. lost source</code><br>'
+                '<a href="zotero://open-pdf/library/items/ATT?annotation=ANN">'
+                'second</a>: <code>n. second</code></p>',))
+            db.commit()
+        with self.assertRaisesRegex(sync.SyncError, '来源格式损坏'):
+            self.run_cli()
+        self.assertEqual(storage.fingerprint(self.collection), before)
+        _, report = self.latest(stage='failed_before_commit')
+        self.assertFalse(report['committed'])
+        self.assertEqual(report['conflicts'][0]['reason'], 'invalid_source_format')
+
     def test_starting_app_between_preflight_and_commit_blocks_commit(self):
         with patch.object(sync, '_running_applications', side_effect=[[], ['Anki']]):
             with self.assertRaises(sync.SyncError):
                 self.run_cli()
+        self.assertEqual(storage.fingerprint(self.collection), self.before)
+
+    def test_running_apps_stop_before_database_access_or_new_reports(self):
+        for flags in ((), ('--dry-run',), ('--recover', str(self.root / 'previous.json'))):
+            with self.subTest(flags=flags), \
+                    patch.object(sync, '_running_applications', return_value=['Zotero', 'Anki']), \
+                    patch.object(storage, 'consistent_backup') as backup, \
+                    patch.object(sync.vocabulary, 'export_note') as export, \
+                    patch.object(storage, 'recover_outputs') as recover:
+                with self.assertRaisesRegex(sync.SyncError, '尚未开始：检测到 Zotero、Anki') as caught:
+                    self.run_cli(*flags)
+                self.assertIn('未生成新的运行报告', str(caught.exception))
+                backup.assert_not_called()
+                export.assert_not_called()
+                recover.assert_not_called()
+                self.assertFalse((self.root / 'output').exists())
+                self.assertEqual(storage.fingerprint(self.collection), self.before)
+
+    def test_environment_check_does_not_require_apps_to_be_closed(self):
+        with patch.object(sync, '_running_applications', side_effect=AssertionError('Process check during --check')):
+            self.assertEqual(self.run_cli('--check'), 0)
+        self.assertFalse((self.root / 'output').exists())
         self.assertEqual(storage.fingerprint(self.collection), self.before)
 
     def test_wrong_environment_never_opens_personal_databases(self):
@@ -287,3 +347,26 @@ class TransactionTests(unittest.TestCase):
                 self.run_cli()
             backup.assert_not_called()
         self.assertEqual(storage.fingerprint(self.collection), self.before)
+
+    def test_incompatible_backend_stops_before_personal_access_or_new_reports(self):
+        for flags in ((), ('--dry-run',), ('--check',), ('--recover', str(self.root / 'previous.json'))):
+            with self.subTest(flags=flags), \
+                    patch.object(sync.runtime_check, '_probe_backend',
+                                 side_effect=RuntimeError('synthetic export API mismatch')) as probe, \
+                    patch.object(sync, '_configure_anki', return_value=(Mock(), None)) as configure, \
+                    patch.object(storage, 'consistent_backup') as backup, \
+                    patch.object(storage, 'CollectionLock') as lock, \
+                    patch.object(sync.vocabulary, 'export_note') as source, \
+                    patch.object(storage, 'recover_outputs') as recover, \
+                    patch.object(storage, 'atomic_json') as journal:
+                with self.assertRaisesRegex(RuntimeError, 'synthetic export API mismatch'):
+                    self.run_cli(*flags)
+                probe.assert_called_once()
+                configure.return_value[0].assert_not_called()
+                backup.assert_not_called()
+                lock.assert_not_called()
+                source.assert_not_called()
+                recover.assert_not_called()
+                journal.assert_not_called()
+                self.assertFalse((self.root / 'output').exists())
+                self.assertEqual(storage.fingerprint(self.collection), self.before)

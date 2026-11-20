@@ -53,6 +53,7 @@ tests/test_launcher.py
 tests/test_local_config.py
 tests/test_project_identity.py
 tests/test_repository_privacy.py
+tests/test_runtime_check.py
 tests/test_sync_identity.py
 tests/test_sync_packages.py
 tests/test_sync_safety.py

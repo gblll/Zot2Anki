@@ -1,6 +1,6 @@
 # Acceptance / 验收
 
-All automated tests use temporary synthetic data. Use the project `.venv`, Python 3.13 and Anki backends 26.5 / 26.9 (26.05 / 26.09 are also recognized). CI can set `ZOT2ANKI_TEST_ANKI_PACKAGES` for its disposable backend; this variable changes only tests, never production application detection.
+All automated tests use temporary synthetic data. Use the project `.venv` and Python 3.13. CI tests the Anki 26.5 / 26.9 regression baselines and the latest stable backend, installed without a version pin. Production compatibility is determined by a temporary-collection capability probe on every check/sync, not by an Anki version allowlist. CI can set `ZOT2ANKI_TEST_ANKI_PACKAGES` for its disposable backend; this variable changes only tests, never production application detection.
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
@@ -26,7 +26,7 @@ node --test tests/core.test.js
 | One dead source link blocking healthy entries | `test_export_vocabulary_note` (`SkippedSourceTests`), `test_sync_transaction`: default refusal, opt-in skip reporting, review TSV rows and no provider query. |
 | Legacy adoption never ran, blocking every template change | `test_sync_identity`: adoption reads the Source field directly; a private card refuses the migration, an adoptable collection and a tagged orphaned entry do not. |
 
-Additional tests cover source changes, adoption, restored missing notes, repeated sync, preserved card identity/Notes/review state, clean re-import isolation, synthetic PDF extraction, default offline operation, run locks, output collisions, recovery, environment gating and applications starting before commit.
+Additional tests cover source changes, adoption, restored missing notes, repeated sync, preserved card identity/Notes/review state, clean re-import isolation, synthetic PDF extraction, default offline operation, run locks, output collisions, recovery, environment gating and applications starting before commit. Runtime regressions must show that an unlisted Anki version is accepted when capabilities pass, while failed note/update, identity/review or package operations stop before personal DB access. The probe itself uses temporary synthetic collections only.
 
 ## Clean install
 
@@ -49,4 +49,4 @@ Invalid source records must be rejected with no commit. If the actual Note conta
 
 ## Release gate
 
-The exact release commit must pass unit/legacy tests, raw package privacy tests, clean-install verification and the Windows CI workflow for both supported Anki backends. Build the ZIP from that commit's `release-files.txt`; inspect every payload entry and hash. Save a sanitized summary alongside the SHA256 list. Keep the repository public and create only a Draft Pre-release. Record the 2026-09-07 Support cleanup confirmation and the 2026-09-08 authenticated 404 checks for the two known old commit pages, without claiming a comprehensive cache audit. For rc.4, preserve rc.1, rc.2 and rc.3 releases, tags and assets, fast-forward main only to the verified final commit, and bind the new tag, ZIP manifest, acceptance summary and CI to that same commit. Repository visibility changes, deletion, history rewrite, support messages and publishing the draft are outside this workflow. Historical real-data acceptance belongs to rc.1 commit 1230dac and is not a new rc.4 acceptance result; rc.4 acceptance uses synthetic data only.
+The exact release commit must pass unit/legacy tests, raw package privacy tests, clean-install verification and the Windows CI workflow for both Anki baselines and the latest stable backend. Build the ZIP from that commit's `release-files.txt`; inspect every payload entry and hash. Save a sanitized summary alongside the SHA256 list. Keep the repository public and create only a Draft Pre-release. Record the 2026-09-07 Support cleanup confirmation and the 2026-09-08 authenticated 404 checks for the two known old commit pages, without claiming a comprehensive cache audit. For rc.4, preserve rc.1, rc.2 and rc.3 releases, tags and assets, fast-forward main only to the verified final commit, and bind the new tag, ZIP manifest, acceptance summary and CI to that same commit. Repository visibility changes, deletion, history rewrite, support messages and publishing the draft are outside this workflow. Historical real-data acceptance belongs to rc.1 commit 1230dac and is not a new rc.4 acceptance result; rc.4 acceptance uses synthetic data only.

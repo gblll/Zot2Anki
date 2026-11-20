@@ -4,17 +4,19 @@ The RC entry point is `Syne_Zot2Anki.cmd`, backed by the project's `.venv`. See 
 
 ## Source format / 来源格式
 
-Use one vocabulary entry per paragraph, one complete Zotero annotation link, then a definition. Synthetic example:
+Use one vocabulary entry per paragraph, one complete Zotero annotation link, then a definition. Nonempty text before the link is rejected because it may be an entry with a lost source. Synthetic example:
 
 ```html
 <p><a href="zotero://open-pdf/library/items/TESTITEM?page=1&amp;annotation=TESTKEY">sample</a>: <code>🔉 英 [ˈsɑːmpəl] n. 示例</code></p>
 ```
 
-Group sources use `zotero://open-pdf/groups/<group-id>/items/<attachment-key>?annotation=<annotation-key>`. The identifiers above are placeholders. Library/group, attachment and annotation must resolve together in Zotero and must not be deleted. Definitions without recognized pronunciation are retained with a review flag; broken source identities cannot enter synchronization. Empty paragraphs are ignored; an initial plain paragraph matching the Note title is allowed. Both synchronization and the standalone TSV CLI reject other non-vocabulary text paragraphs and nonempty text outside paragraphs, because a lost source link cannot safely be distinguished from an intentional comment. Wrapper elements containing valid paragraphs and whitespace remain allowed. The TSV CLI applies the same repository output protection, including explicit cache paths. Its `--no-examples` flag disables PDF and online extraction but still checks annotation existence; `--skip-invalid-sources` remains available.
+Group sources use `zotero://open-pdf/groups/<group-id>/items/<attachment-key>?annotation=<annotation-key>`. The identifiers above are placeholders. Library/group, attachment and annotation must resolve together in Zotero and must not be deleted. Definitions without recognized pronunciation are retained with a review flag; broken source identities cannot enter synchronization. Empty paragraphs are ignored; an initial plain paragraph or heading (`h1`–`h6`) matching the Note title is allowed. The title must contain no links or code. Both synchronization and the standalone TSV CLI reject other non-vocabulary text paragraphs and nonempty text outside paragraphs, because a lost source link cannot safely be distinguished from an intentional comment. Wrapper elements containing valid paragraphs and whitespace remain allowed. The TSV CLI applies the same repository output protection, including explicit cache paths. Its `--no-examples` flag disables PDF and online extraction but still checks annotation existence; `--skip-invalid-sources` remains available.
 
 A link that is well formed but whose annotation was deleted is a separate case from a damaged link. By default it also stops the run. `--skip-invalid-sources` narrows that decision to the affected entries only: each one is dropped from the update set and recorded under `skipped_sources` in the journal, and written as a `skipped_invalid_source` row in the review TSV with its word, reason and original link. Its text is still never sent to an online provider. A skipped entry is still present in the Note, so its existing card is left exactly as it is — content, identity, personal Notes and review history are untouched and it is not marked missing. Only an entry that disappears from the Note becomes `MissingFromZotero`. Existing tags are also preserved; review flags belong to the report. If no valid entries remain, synchronization stops without committing.
 
-生词使用一个段落、一条完整来源链接，后接释义。空段落以及首段与 Note 标题一致的普通文字可保留；其他无法识别来源的文字段落会停止同步。解析为空、链接损坏或来源已删除，不能通过 `--allow-large-removal` 绕过。音标格式异常会保留释义并标记待复核。若链接格式完整但批注已被删除，默认同样停止；`--skip-invalid-sources` 只跳过这些条目并在报告和复核 TSV 中逐条列出，其余条目正常同步；被跳过条目的卡片保持原样，内容与复习历史不变，也不标记缺失。只有条目从笔记中消失才会标记 `MissingFromZotero`。
+生词使用一个段落、一条完整来源链接，后接释义。空段落以及开头与 Note 标题一致、不含链接或代码的普通段落或标题（`h1`–`h6`）可保留；其他无法识别来源的文字段落会停止同步。解析为空、链接损坏或来源已删除，不能通过 `--allow-large-removal` 绕过。音标格式异常会保留释义并标记待复核。若链接格式完整但批注已被删除，默认同样停止；`--skip-invalid-sources` 只跳过这些条目并在报告和复核 TSV 中逐条列出，其余条目正常同步；被跳过条目的卡片保持原样，内容与复习历史不变，也不标记缺失。只有条目从笔记中消失才会标记 `MissingFromZotero`。
+
+来源链接前若含非空文字，也会停止同步，避免合并段落后把仍存在的词条误标为缺失。学习文本只在输入边界解码一次，字面的 HTML 实体与尖括号文字保持不同身份。
 
 ## Ownership and migration / 归属与迁移
 
@@ -30,7 +32,7 @@ Fields remain `Word`, `Symbol`, `Chn`, `Example`, `Source`, `ZoteroKeys`, `Notes
 
 ## Commit protocol / 提交协议
 
-1. Check the pinned runtime before personal DB access; reject unsafe output locations.
+1. Check the Windows/Python/PDF runtime and probe the installed Anki backend in temporary synthetic collections before personal DB access; reject unsafe output locations.
 2. Acquire an OS collection lock and fingerprint the original.
 3. Use SQLite's backup interface, including committed WAL pages, and validate the backup.
 4. Parse valid sources, plan every match/conflict/removal, and check shared-template impact.
@@ -71,6 +73,10 @@ Extract a new release beside the old installation. Keep the old copy until accep
 
 升级时解压到新目录，保留旧版和备份，重新执行设置、环境检查和 dry-run。移动配置后重新核对相对路径；项目移动后重建快捷方式。旧插件源码可保留，但不作为本次推荐安装入口。
 
+Anki updates require no version allowlist edit. Every `-Check` and sync probes the installed backend with temporary synthetic data: note creation and updates, identity/review preservation, and package export/import must work before personal DB access. The version is recorded for diagnostics, not used to reject an otherwise compatible backend. A changed API or package format can still require a code update; probe failures report the incompatible operation and leave the original collection unchanged. Candidate validation remains required for the actual collection. Windows x64, Python 3.13 and the pinned PyMuPDF requirement remain unchanged.
+
+Anki 更新后不需要修改版本白名单；每次 `-Check` 和同步都会自动探测当前后端，版本号仅用于诊断。真正的接口或包格式变更仍可能需要更新本工具，探测失败会在访问个人库前报错。探测通过后，实际同步仍须通过候选库验证；Windows x64、Python 3.13 和固定 PyMuPDF 依赖要求不变。
+
 ## Examples and sharing / 例句与分享
 
 Local PDF extraction supports text PDFs and cross-line hyphens. Scanned pages are reported for OCR; OCR is not bundled. Source lookup is constrained by library/group and attachment and excludes deleted sources before any text can reach an online provider. Offline is the default and `--refresh-examples` does not enable networking. Successful examples expire after 30 days, successful no-result queries after 1 day; failures are not durable empty results. Cache writes are atomic.
@@ -78,6 +84,10 @@ Local PDF extraction supports text PDFs and cross-line hyphens. Scanned pages ar
 Clean packages retain vocabulary and definitions as escaped learning text, with no private media. Local titles and local PDF sentences are omitted unless public provenance can be established; this RC conservatively omits all local-source metadata and uses only verified provider metadata for shareable examples. Offline runs do not make verification requests. A fixed, public Anki default deck configuration is retained because the importer requires config 1; no personal deck preferences or learned parameters are copied. Public metadata verification does not grant copyright permission for publication.
 
 clean 仅包含当前有效学习内容，使用独立分享身份，重复导入不会新增重复项，导回个人库不会覆盖个人卡。仅保留固定的 Anki 必需默认牌组配置。私人标签、Notes、来源标识、媒体和复习数据不进入 clean。私人内容若本来就写在单词或释义中，仍须自行检查后分享；自动结构校验不能理解所有自然语言隐私。
+
+Clean packages use their own public build time as the note revision, never the personal note's modification time. Default Anki imports can update revised learning content under the same sharing GUID. Sequential builds cross the one-second revision boundary before returning, adding at most about one second. Existing review state is preserved by the importer; edits made by recipients after a package's build time remain subject to Anki's normal newer-content policy.
+
+clean 使用独立的公开构建时间作为笔记版本，不复制个人笔记修改时间。默认导入可按同一分享 GUID 更新释义；连续构建会等待跨过秒级版本边界，最多约一秒。接收者的复习状态保留，接收者在构建时间之后自行编辑的内容仍遵循 Anki 的较新内容优先规则。
 
 ## Maintainer validation / 维护者验证
 

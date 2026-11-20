@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import html
@@ -120,7 +121,7 @@ def extract_attachment_key(href: str) -> str:
 
 
 def normalize_for_match(value: str) -> str:
-    value = html.unescape(value or "").casefold()
+    value = (value or "").casefold()
     value = re.sub(r"(?<=\w)-\s+(?=\w)", "", value)
     return re.sub(r"[^\w]+", "", value, flags=re.UNICODE)
 
@@ -151,16 +152,21 @@ def load_source_contexts(
     """Resolve note links to Zotero annotation/PDF metadata without modifying Zotero."""
 
     contexts: dict[str, SourceContext] = {}
-    for href in dict.fromkeys(hrefs):
+    library_ids: dict[str, int | None] = {}
+    seen_identities: set[str] = set()
+    for href in hrefs:
         identity = source_identity(href)
-        if not identity:
+        if not identity or identity in seen_identities:
             continue
+        seen_identities.add(identity)
         namespace, attachment_key, annotation_key = identity.rsplit('/', 2)
-        if namespace == 'library':
-            libraries = connection.execute("SELECT libraryID FROM libraries WHERE type = 'user'").fetchall()
-        else:
-            libraries = connection.execute('SELECT libraryID FROM groups WHERE groupID = ?', (int(namespace.split('/')[1]),)).fetchall()
-        if len(libraries) != 1:
+        if namespace not in library_ids:
+            if namespace == 'library':
+                libraries = connection.execute("SELECT libraryID FROM libraries WHERE type = 'user'").fetchall()
+            else:
+                libraries = connection.execute('SELECT libraryID FROM groups WHERE groupID = ?', (int(namespace.split('/')[1]),)).fetchall()
+            library_ids[namespace] = libraries[0][0] if len(libraries) == 1 else None
+        if library_ids[namespace] is None:
             continue
         rows = connection.execute(
             """
@@ -218,7 +224,7 @@ def load_source_contexts(
               AND NOT EXISTS (SELECT 1 FROM deletedItems WHERE itemID = attachment.itemID)
               AND NOT EXISTS (SELECT 1 FROM deletedItems WHERE itemID = attachmentData.parentItemID)
             """,
-            (annotation_key, attachment_key, libraries[0][0]),
+            (annotation_key, attachment_key, library_ids[namespace]),
         ).fetchall()
         if len(rows) > 1:
             raise ValueError('Ambiguous Zotero source identity')
@@ -252,11 +258,20 @@ def load_source_contexts(
     return contexts
 
 
-def _join_tokens(words: list[tuple]) -> str:
+def _join_tokens_with_map(words: list[tuple]) -> tuple[str, list[tuple[int, int, int] | None]]:
+    """Retain each character's PDF word ID while repairing spacing and hyphens."""
     lines: dict[tuple[int, int], list[tuple]] = {}
     for word in words:
         lines.setdefault((int(word[5]), int(word[6])), []).append(word)
-    rendered_lines: list[str] = []
+    output = ""
+    positions: list[tuple[int, int, int] | None] = []
+
+    def remove_spaces(text, mapping, pattern):
+        for match in reversed(list(re.finditer(pattern, text))):
+            text = text[:match.start()] + text[match.end():]
+            del mapping[match.start():match.end()]
+        return text
+
     for key in sorted(lines):
         ordered = sorted(lines[key], key=lambda item: int(item[7]))
         ordered = [
@@ -275,20 +290,37 @@ def _join_tokens(words: list[tuple]) -> str:
             and float(ordered[1][0]) - float(ordered[0][2]) > 8
         ):
             ordered = ordered[1:]
-        tokens = [str(word[4]) for word in ordered]
-        line = " ".join(tokens)
-        line = re.sub(r"\s+([,.;:!?%\)\]\}])", r"\1", line)
-        line = re.sub(r"([\(\[\{])\s+", r"\1", line)
-        rendered_lines.append(line.strip())
-    output = ""
-    for line in rendered_lines:
+        line = ""
+        line_positions = []
+        for word in ordered:
+            if line:
+                line += " "
+                line_positions.append(None)
+            token = str(word[4])
+            line += token
+            line_positions.extend([tuple(map(int, word[5:8]))] * len(token))
+        line = remove_spaces(line, line_positions, r"\s+(?=[,.;:!?%\)\]\}])")
+        line = remove_spaces(line, line_positions, r"(?<=[\(\[\{])\s+")
         if not line:
             continue
         if output.endswith("-") and re.match(r"^[a-z]", line):
             output = output[:-1] + line
+            positions.pop()
         else:
-            output = f"{output} {line}".strip()
-    return re.sub(r"\s+", " ", output).strip()
+            if output:
+                output += " "
+                positions.append(None)
+            output += line
+        positions.extend(line_positions)
+    for match in reversed(list(re.finditer(r"\s+", output))):
+        replacement = " " if match.start() > 0 and match.end() < len(output) else ""
+        output = output[:match.start()] + replacement + output[match.end():]
+        positions[match.start():match.end()] = [None] if replacement else []
+    return output, positions
+
+
+def _join_tokens(words: list[tuple]) -> str:
+    return _join_tokens_with_map(words)[0]
 
 
 def _normalized_with_map(value: str) -> tuple[str, list[int]]:
@@ -310,20 +342,32 @@ def _normalized_with_map(value: str) -> tuple[str, list[int]]:
     return "".join(normalized), positions
 
 
-def find_term_span(text: str, term: str) -> tuple[int, int] | None:
+def _term_spans(text: str, term: str) -> Iterable[tuple[int, int]]:
     normalized_text, positions = _normalized_with_map(text)
-    normalized_term, _ = _normalized_with_map(html.unescape(term))
+    normalized_term, _ = _normalized_with_map(term)
     if not normalized_term.strip():
-        return None
+        return
     pattern = r'(?<!\w)' + r'\s+'.join(re.escape(part) for part in normalized_term.split()) + r'(?!\w)'
-    match = re.search(pattern, normalized_text)
-    if match:
-        return positions[match.start()], positions[match.end() - 1] + 1
-    return None
+    for match in re.finditer(pattern, normalized_text):
+        yield positions[match.start()], positions[match.end() - 1] + 1
 
 
-def _sentence_containing(text: str, term: str) -> str | None:
-    span = find_term_span(text, term)
+def find_term_span(text: str, term: str) -> tuple[int, int] | None:
+    return next(iter(_term_spans(text, term)), None)
+
+
+def _anchored_term_span(text: str, term: str, positions, hit_ids) -> tuple[int, int] | None:
+    candidates = []
+    for span in _term_spans(text, term):
+        word_ids = set(positions[span[0]:span[1]]) - {None}
+        matched = len(word_ids & hit_ids)
+        if matched:
+            candidates.append((matched, matched / len(word_ids), span))
+    return max(candidates, key=lambda candidate: candidate[:2])[2] if candidates else None
+
+
+def _sentence_containing(text: str, term: str, *, span: tuple[int, int] | None = None) -> str | None:
+    span = span if span is not None else find_term_span(text, term)
     if span is None:
         return None
     start, end = span
@@ -343,8 +387,8 @@ def _sentence_containing(text: str, term: str) -> str | None:
     return sentence
 
 
-def _trim_fragment(text: str, term: str, maximum_words: int = 40) -> str:
-    span = find_term_span(text, term)
+def _trim_fragment(text: str, term: str, maximum_words: int = 40, *, span: tuple[int, int] | None = None) -> str:
+    span = span if span is not None else find_term_span(text, term)
     if span is None:
         return ""
     tokens = list(re.finditer(r"\S+", text))
@@ -370,7 +414,10 @@ def highlight_term(text: str, term: str) -> str:
 
 
 class PdfExampleExtractor:
-    def __init__(self) -> None:
+    def __init__(self, *, max_cached_pages: int = 16, max_cached_documents: int = 8,
+                 max_cached_text_bytes: int = 16 * 1024 * 1024) -> None:
+        if min(max_cached_pages, max_cached_documents, max_cached_text_bytes) < 1:
+            raise ValueError("PDF cache limits must be positive")
         try:
             import pymupdf  # type: ignore
         except ImportError as exc:
@@ -378,12 +425,19 @@ class PdfExampleExtractor:
                 "缺少 PyMuPDF。请先运行：python -m pip install -r requirements.txt"
             ) from exc
         self._pymupdf = pymupdf
-        self._documents: dict[Path, object] = {}
+        self._documents: OrderedDict[Path, object] = OrderedDict()
+        self._pages: OrderedDict[tuple[Path, int], tuple] = OrderedDict()
+        self._max_cached_pages = max_cached_pages
+        self._max_cached_documents = max_cached_documents
+        self._max_cached_text_bytes = max_cached_text_bytes
+        self._cached_text_bytes = 0
 
     def close(self) -> None:
         for document in self._documents.values():
             document.close()
         self._documents.clear()
+        self._pages.clear()
+        self._cached_text_bytes = 0
 
     def __enter__(self) -> "PdfExampleExtractor":
         return self
@@ -392,9 +446,36 @@ class PdfExampleExtractor:
         self.close()
 
     def _document(self, path: Path):
-        if path not in self._documents:
+        if path in self._documents:
+            self._documents.move_to_end(path)
+        else:
             self._documents[path] = self._pymupdf.open(path)
+            while len(self._documents) > self._max_cached_documents:
+                _, document = self._documents.popitem(last=False)
+                document.close()
         return self._documents[path]
+
+    def _page_text(self, path: Path, page_index: int, document):
+        key = (path, page_index)
+        if key in self._pages:
+            self._pages.move_to_end(key)
+            return self._pages[key][:3]
+        page = document[page_index]
+        words = page.get_text("words", sort=False)
+        text_blocks = [row for row in page.get_text("blocks", sort=False)
+                       if len(row) > 6 and int(row[6]) == 0 and str(row[4]).strip()]
+        # Account conservatively for Python tuple/number overhead and Unicode text.
+        # Oversized individual pages are usable but do not displace the whole cache.
+        size = sum(512 + 4 * len(str(row[4])) for row in words + text_blocks)
+        value = (words, text_blocks, page.transformation_matrix)
+        if size <= self._max_cached_text_bytes:
+            self._pages[key] = (*value, size)
+            self._cached_text_bytes += size
+            while (len(self._pages) > self._max_cached_pages
+                   or self._cached_text_bytes > self._max_cached_text_bytes):
+                _, removed = self._pages.popitem(last=False)
+                self._cached_text_bytes -= removed[3]
+        return value
 
     @staticmethod
     def _overlaps(word: tuple, rect: tuple[float, float, float, float]) -> bool:
@@ -414,14 +495,13 @@ class PdfExampleExtractor:
             document = self._document(path)
             if context.page_index >= len(document):
                 return ExtractionOutcome(None, ("ExampleNeedsReview",), ("invalid_page",))
-            page = document[context.page_index]
-            words = page.get_text("words", sort=False)
+            words, text_blocks, transformation = self._page_text(path, context.page_index, document)
         except Exception as exc:
             return ExtractionOutcome(None, ("ExampleNeedsReview",), (f"pdf_error:{type(exc).__name__}",))
         if not words:
             return ExtractionOutcome(None, ("OCRRequired",), ("pdf_has_no_text",))
         mapped_rects = [
-            tuple(self._pymupdf.Rect(rect) * page.transformation_matrix)
+            tuple(self._pymupdf.Rect(rect) * transformation)
             for rect in context.rects
         ]
         hits = [
@@ -432,11 +512,11 @@ class PdfExampleExtractor:
         if not hits:
             return ExtractionOutcome(None, ("ExampleNeedsReview",), ("coordinate_miss",))
         anchor_blocks = {int(word[5]) for word in hits}
-        block_rows = page.get_text("blocks", sort=False)
-        text_blocks = [row for row in block_rows if len(row) > 6 and int(row[6]) == 0 and str(row[4]).strip()]
+        hit_ids = {tuple(map(int, word[5:8])) for word in hits}
         selected_words = [word for word in words if int(word[5]) in anchor_blocks]
-        selected_text = _join_tokens(selected_words)
-        sentence = _sentence_containing(selected_text, term)
+        selected_text, positions = _join_tokens_with_map(selected_words)
+        selected_span = _anchored_term_span(selected_text, term, positions, hit_ids)
+        sentence = _sentence_containing(selected_text, term, span=selected_span) if selected_span else None
         if sentence is None:
             anchor_box = next((row for row in text_blocks if int(row[5]) in anchor_blocks), None)
             if anchor_box is not None:
@@ -450,10 +530,12 @@ class PdfExampleExtractor:
                     if overlap / width >= 0.55 and vertical_gap <= 70:
                         neighbours.append(row)
                 neighbour_ids = {int(row[5]) for row in neighbours}
-                combined = _join_tokens([word for word in words if int(word[5]) in neighbour_ids])
-                sentence = _sentence_containing(combined, term)
+                combined, positions = _join_tokens_with_map([word for word in words if int(word[5]) in neighbour_ids])
+                combined_span = _anchored_term_span(combined, term, positions, hit_ids)
+                sentence = _sentence_containing(combined, term, span=combined_span) if combined_span else None
                 if sentence is not None:
                     selected_text = combined
+                    selected_span = combined_span
         if sentence is not None:
             return ExtractionOutcome(
                 ExampleCandidate(
@@ -466,7 +548,7 @@ class PdfExampleExtractor:
                     source_href=context.href,
                 )
             )
-        fragment = _trim_fragment(selected_text, term)
+        fragment = _trim_fragment(selected_text, term, span=selected_span) if selected_span else ""
         if fragment:
             return ExtractionOutcome(
                 ExampleCandidate(

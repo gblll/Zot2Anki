@@ -12,6 +12,13 @@ MODEL_NAME = 'Zotero2Anki Vocabulary'
 FIELDS = ['Word', 'Symbol', 'Chn', 'Example', 'Source', 'ZoteroKeys', 'Notes']
 MANAGED_TAGS = {'Zotero2Anki', 'NeedsReview', 'ContextFragment', 'OnlineExample',
                 'NoExample', 'ExampleNeedsReview', 'OCRRequired', 'MissingSource', 'MissingFromZotero'}
+MANAGED_TAG_KEYS = {tag.casefold() for tag in MANAGED_TAGS}
+
+
+def _tag_keys(tags):
+    # Anki preserves the spelling already registered in the collection, while
+    # treating tag identities case-insensitively.
+    return {tag.casefold() for tag in tags}
 
 
 class PlanError(RuntimeError):
@@ -42,6 +49,7 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False, sk
     incoming = [identities_from_html(card.source_html, require_all=True) for card in cards]
     conflicts = []
     by_source = {}
+    by_source_set = {}
     for index, (card, sources) in enumerate(zip(cards, incoming)):
         if not sources or not word_identity(card.word):
             conflicts.append({'input': index, 'reason': 'invalid_source_or_empty_word'})
@@ -49,6 +57,8 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False, sk
             if source in by_source:
                 conflicts.append({'inputs': [by_source[source], index], 'reason': 'source_used_twice', 'source': source})
             by_source[source] = index
+        if sources:
+            by_source_set.setdefault(frozenset(sources), []).append(index)
     excluded = []
     migrated = []
     if ledger is None:
@@ -60,14 +70,14 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False, sk
             # directly; this model is required to have a Source field.
             sources = identities_from_html(note['Source'], require_all=True)
             active_sources = set(sources) - skipped_identities
-            candidates = [i for i, values in enumerate(incoming)
-                          if active_sources and set(values) == active_sources]
-            if 'Zotero2Anki' in note.tags and len(candidates) == 1:
-                owned[str(nid)] = {'sources': sources, 'word': word_identity(note['Word'])}
+            candidates = by_source_set.get(frozenset(active_sources), [])
+            tagged = 'zotero2anki' in _tag_keys(note.tags)
+            if tagged and len(candidates) == 1:
+                owned[str(nid)] = {'sources': sources, 'word': word_identity(note['Word'], html_encoded=True)}
                 migrated.append(nid)
             else:
-                excluded.append({'note_id': nid, 'reason': 'legacy_unattributed' if 'Zotero2Anki' in note.tags else 'unmanaged'})
-                if 'Zotero2Anki' in note.tags and sources and any(set(sources) & set(v) for v in incoming):
+                excluded.append({'note_id': nid, 'reason': 'legacy_unattributed' if tagged else 'unmanaged'})
+                if tagged and any(source in by_source for source in sources):
                     conflicts.append({'note_id': nid, 'reason': 'ambiguous_legacy_sources'})
     else:
         excluded = [{'note_id': nid, 'reason': 'unmanaged'} for nid in sorted(all_ids - set(map(int, owned)))]
@@ -76,7 +86,7 @@ def plan_sync(collection, cards, binding: dict, *, allow_large_removal=False, sk
         nid = int(nid_text)
         for source in entry['sources']:
             source_owners.setdefault(source, set()).add(nid)
-        word_owners.setdefault(word_identity(notes[nid]['Word']), set()).add(nid)
+        word_owners.setdefault(word_identity(notes[nid]['Word'], html_encoded=True), set()).add(nid)
     for source, owners in source_owners.items():
         if len(owners) > 1:
             conflicts.append({'source': source, 'notes': sorted(owners), 'reason': 'duplicate_owned_identity'})
@@ -132,7 +142,7 @@ def check_model_migration(collection, plan, front, back, css):
         if nid in adoptable:
             continue
         note = collection.get_note(nid)
-        managed_history = ('Zotero2Anki' in note.tags
+        managed_history = ('zotero2anki' in _tag_keys(note.tags)
                            or bool(identities_from_html(note['Source'], require_all=True)))
         if not managed_history:
             raise PlanError('模板迁移会影响未托管笔记，已停止；请先在 Anki 中为私人卡片使用独立笔记类型')
@@ -148,16 +158,16 @@ def execute_plan(collection, cards, plan, model, deck_id):
             continue
         note = collection.get_note(nid) if nid is not None else collection.new_note(model)
         # Anki canonicalizes tag order when saving. Order alone is not a change.
-        before = (tuple(note.fields), tuple(sorted(note.tags)))
-        missing_before = 'MissingFromZotero' in note.tags
+        before = (tuple(note.fields), _tag_keys(note.tags))
+        missing_before = 'missingfromzotero' in before[1]
         for name, value in zip(FIELDS[:6], [escaped_word(card.word), card.symbol_html, card.chn_html,
                                           card.example_html, card.source_html, ' '.join(card.zotero_keys)]):
             note[name] = value
-        note.tags = list(dict.fromkeys([tag for tag in note.tags if tag not in MANAGED_TAGS] + list(card.tags)))
+        note.tags = list(dict.fromkeys([tag for tag in note.tags if tag.casefold() not in MANAGED_TAG_KEYS] + list(card.tags)))
         if nid is None:
             collection.add_note(note, deck_id)
             counts['added'] += 1
-        elif before != (tuple(note.fields), tuple(sorted(note.tags))):
+        elif before != (tuple(note.fields), _tag_keys(note.tags)):
             collection.update_note(note)
             counts['updated'] += 1
         else:
@@ -166,7 +176,7 @@ def execute_plan(collection, cards, plan, model, deck_id):
         owned[str(note.id)] = {'sources': sources, 'word': word_identity(card.word)}
     for nid in plan['missing']:
         note = collection.get_note(nid)
-        if 'MissingFromZotero' not in note.tags:
+        if 'missingfromzotero' not in _tag_keys(note.tags):
             note.add_tag('MissingFromZotero')
             collection.update_note(note)
             counts['marked_missing'] += 1

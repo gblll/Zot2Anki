@@ -96,6 +96,8 @@ class ParagraphRecord:
     example_tags: list[str] = field(default_factory=list)
     raw_text: str = ''
     outside_paragraph: bool = False
+    is_heading: bool = False
+    prefix_text: str = ''
 
 
 @dataclass
@@ -253,6 +255,8 @@ def split_definition(definition_html: str) -> ParsedDefinition:
 
 
 class _VocabularyNoteParser(HTMLParser):
+    HEADING_TAGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.records: list[ParagraphRecord] = []
@@ -262,11 +266,12 @@ class _VocabularyNoteParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
-        if tag == "p":
+        if tag == "p" or tag in self.HEADING_TAGS:
             self._finish_outside_text()
             if self._paragraph is not None:
                 self._finish_paragraph()
             self._paragraph = {
+                "tag": tag,
                 "front_parts": [],
                 "href": "",
                 "capturing_front": False,
@@ -275,6 +280,7 @@ class _VocabularyNoteParser(HTMLParser):
                 "code_count": 0,
                 "link_count": 0,
                 "raw_text": [],
+                "prefix_parts": [],
             }
             return
         paragraph = self._paragraph
@@ -302,7 +308,7 @@ class _VocabularyNoteParser(HTMLParser):
         if tag == "a" and self._paragraph["capturing_front"]:
             self._paragraph["capturing_front"] = False
             self._paragraph["after_source"] = True
-        elif tag == "p":
+        elif tag == self._paragraph["tag"]:
             self._finish_paragraph()
 
     def handle_data(self, data: str) -> None:
@@ -315,6 +321,8 @@ class _VocabularyNoteParser(HTMLParser):
             paragraph["front_parts"].append(data)
         elif paragraph["after_source"]:
             paragraph["segments"][-1].append(data)
+        else:
+            paragraph["prefix_parts"].append(data)
 
     def close(self) -> None:
         super().close()
@@ -361,6 +369,9 @@ class _VocabularyNoteParser(HTMLParser):
                 link_count=paragraph["link_count"],
                 review_reasons=reasons,
                 raw_text=normalize_text(''.join(paragraph['raw_text'])),
+                outside_paragraph=paragraph['tag'] != 'p',
+                is_heading=paragraph['tag'] in self.HEADING_TAGS,
+                prefix_text=normalize_text(''.join(paragraph['prefix_parts'])),
             )
         )
         self._paragraph_index += 1
@@ -822,11 +833,20 @@ def write_exports(cards: list[Card], output_dir: Path, timestamp: str | None = N
 
 
 def validate_records(records, note_title=''):
-    damaged = [record.index for record in records
-               if record.outside_paragraph or ((record.front or record.code_count) and
-               (not record.front or not source_identity(record.href) or record.link_count != 1))]
-    damaged += [record.index for record in records if not record.front and record.raw_text and
-                not (record.index == 0 and record.raw_text == note_title) and record.index not in damaged]
+    damaged = []
+    for record in records:
+        # Zotero notes can start with their title in a paragraph or a heading.
+        # Only plain title text is exempt; links/code must still be validated.
+        is_title = (record.index == 0 and record.raw_text == note_title
+                    and not (record.front or record.code_count or record.link_count)
+                    and (not record.outside_paragraph or record.is_heading))
+        if is_title:
+            continue
+        invalid_source = ((record.front or record.code_count) and
+                          (not record.front or not source_identity(record.href) or record.link_count != 1))
+        if (record.outside_paragraph or invalid_source or (record.front and record.prefix_text)
+                or (not record.front and record.raw_text)):
+            damaged.append(record.index)
     if damaged:
         raise ExportError(f'生词来源格式损坏，段落序号：{damaged}',
                           conflicts=[{'paragraph_index': index, 'reason': 'invalid_source_format'} for index in damaged])

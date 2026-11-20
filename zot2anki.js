@@ -95,7 +95,7 @@ var Zot2Anki = (() => {
   }
 
   function getPreference(name, fallback) {
-    const value = Zotero.Prefs.get(name);
+    const value = Zotero.Prefs.get(name, true);
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
   }
 

@@ -5,27 +5,21 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-import hashlib
 import html
 import json
-import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import uuid
-from typing import Any
 
 try:
     from scripts import local_config, sync_plan, sync_storage, sync_packages, runtime_check
     from scripts import export_vocabulary_note as vocabulary
-    from scripts.vocabulary_examples import extract_annotation_key
 except ModuleNotFoundError:
     import local_config, sync_plan, sync_storage, sync_packages, runtime_check
     import export_vocabulary_note as vocabulary
-    from vocabulary_examples import extract_annotation_key
 
 
 DEFAULT_ANKI_PACKAGES = local_config.DEFAULT_ANKI_PACKAGES
@@ -64,14 +58,6 @@ def _configure_anki(packages: Path):
     return Collection, None
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _running_applications() -> list[str]:
     if sys.platform != "win32":
         return []
@@ -91,6 +77,18 @@ def _running_applications() -> list[str]:
         if executable.casefold() in result.stdout.casefold():
             running.append(label)
     return running
+
+
+def _require_applications_closed(operation: str) -> None:
+    """Stop before database access or journal creation if an app is running."""
+    running = _running_applications()
+    if running:
+        raise SyncError(
+            operation + '尚未开始：检测到 ' + '、'.join(running) + ' 正在运行。'
+            '请保存编辑并正常退出这些应用，等待后台进程结束后重试。\n'
+            '若窗口已关闭，请在任务管理器的“详细信息”中检查 zotero.exe / anki.exe。\n'
+            '本次未修改数据库或产物，也未生成新的运行报告。'
+        )
 
 
 def _field_names(model: dict) -> list[str]:
@@ -151,7 +149,8 @@ def _split_keys(value: str) -> list[str]:
 
 
 def _set_managed_tags(note, desired: list[str]) -> None:
-    preserved = [tag for tag in note.tags if tag not in MANAGED_TAGS]
+    managed = {tag.casefold() for tag in MANAGED_TAGS}
+    preserved = [tag for tag in note.tags if tag.casefold() not in managed]
     note.tags = list(dict.fromkeys(preserved + desired))
 
 
@@ -220,14 +219,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({'environment': environment, 'status': 'ok'}, ensure_ascii=False))
         return 0
     if args.recover:
-        if _running_applications():
-            raise SyncError('请手动关闭 Anki 和 Zotero 后恢复产物')
-        state = sync_storage.recover_outputs(args.recover.resolve())
+        _require_applications_closed('产物恢复')
+        sync_storage.recover_outputs(args.recover.resolve())
         print('数据库已提交，剩余产物整理完成：' + str(args.recover))
         return 0
-    running = _running_applications()
-    if running:
-        raise SyncError('检测到 ' + '、'.join(running) + ' 正在运行；请手动关闭后重试。')
+    _require_applications_closed('同步')
     output_dir = args.output_dir.resolve()
     check_output_directory(output_dir)
     collection_path = args.collection.resolve()

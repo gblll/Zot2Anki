@@ -12,15 +12,65 @@ from scripts.vocabulary_examples import ExtractionOutcome
 
 
 class VocabularyNoteParserTests(unittest.TestCase):
+    def test_strict_validation_rejects_unparsed_text_before_source(self):
+        link = '<a href="zotero://open-pdf/library/items/ATT?annotation=ANN">second</a>'
+        for prefix in ('first: <code>n. lost source</code><br>', 'unparsed text ', '<span>first</span>'):
+            with self.subTest(prefix=prefix):
+                records = exporter.parse_note_html(f'<p>{prefix}{link}: n. second</p>')
+                with self.assertRaises(exporter.ExportError):
+                    exporter.validate_records(records)
+        records = exporter.parse_note_html(f'<p> \n&nbsp;{link}: n. second</p>')
+        exporter.validate_records(records)
+
+    def test_literal_entities_remain_distinct_through_merge_and_tsv(self):
+        records = exporter.parse_note_html(
+            '<p><a href="zotero://open-pdf/library/items/ATT?annotation=A">'
+            '&amp;lt;word&amp;gt;</a>: n. literal entity</p>'
+            '<p><a href="zotero://open-pdf/library/items/ATT?annotation=B">'
+            '&lt;word&gt;</a>: n. angle brackets</p>')
+        exporter.validate_records(records)
+        cards, _ = exporter.build_cards(records)
+        self.assertEqual([card.word for card in cards], ['&lt;word&gt;', '<word>'])
+        fields = [row.split('\t')[0] for row in exporter.serialize_anki_tsv(cards).splitlines()[5:]]
+        self.assertEqual(fields, ['&amp;lt;word&amp;gt;', '&lt;word&gt;'])
+
     def test_strict_validation_rejects_text_outside_paragraphs(self):
         valid = '<p><a href="zotero://open-pdf/library/items/ATT?annotation=ANN">one</a>: n. one</p>'
-        for extra in ('<div>two: lost source</div>', '<h2>Vocabulary</h2>',
+        for extra in ('<div>two: lost source</div>', '<h2>Another title</h2>',
                       '<ul><li>two: lost source</li></ul>', 'unwrapped text'):
             for note in (extra + valid, valid + extra):
                 with self.subTest(note=note):
                     records = exporter.parse_note_html(note)
                     with self.assertRaises(exporter.ExportError):
                         exporter.validate_records(records, 'Vocabulary')
+
+    def test_leading_plain_heading_matching_note_title_is_not_a_card(self):
+        valid = '<p><a href="zotero://open-pdf/library/items/ATT?annotation=ANN">one</a>: n. one</p>'
+        for tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+            with self.subTest(tag=tag):
+                records = exporter.parse_note_html(
+                    f'<div class="zotero-note">\n<{tag} style="color: blue">'
+                    f'<span>📘 Vocabulary &gt;&gt;</span></{tag}>' + valid + '</div>')
+                exporter.validate_records(records, '📘 Vocabulary >>')
+                cards, _ = exporter.build_cards(records)
+                self.assertEqual([card.word for card in cards], ['one'])
+
+    def test_title_exception_does_not_hide_damaged_content(self):
+        valid = '<p><a href="zotero://open-pdf/library/items/ATT?annotation=ANN">one</a>: n. one</p>'
+        for note in (
+            '<div>Vocabulary</div>' + valid,
+            '<h2>Vocabulary</h2>lost source' + valid,
+            '<h2><code>Vocabulary</code></h2>' + valid,
+            '<h2><a href="https://example.org">Vocabulary</a></h2>' + valid,
+            '<h2><a href="zotero://open-pdf/library/items/ATT?annotation=ANN">Vocabulary</a></h2>' + valid,
+            valid + '<h2>Vocabulary</h2>',
+            '<h2>Vocabulary</h2><h2>Vocabulary</h2>' + valid,
+            '<h2>Vocabulary</h2><p>two: lost source</p>' + valid,
+            '<h2>Vocabulary</h2>',
+        ):
+            with self.subTest(note=note):
+                with self.assertRaises(exporter.ExportError):
+                    exporter.validate_records(exporter.parse_note_html(note), 'Vocabulary')
 
     def test_strict_validation_accepts_wrappers_whitespace_and_title_paragraph(self):
         records = exporter.parse_note_html(

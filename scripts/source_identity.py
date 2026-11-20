@@ -38,10 +38,13 @@ def identities_from_html(value: str, *, require_all=False) -> list[str]:
 
 
 def escaped_word(value: str) -> str:
-    # Decode one legacy HTML-escaped layer, then encode once at the rendering boundary.
-    return html.escape(html.unescape(value), quote=True)
+    """Encode plain vocabulary text exactly once at the rendering boundary."""
+    return html.escape(value, quote=True)
 
 
-def word_identity(value: str) -> str:
+def word_identity(value: str, *, html_encoded: bool = False) -> str:
+    """Normalize plain text, decoding only when reading an existing HTML field."""
     import unicodedata
-    return ' '.join(unicodedata.normalize('NFKC', html.unescape(value)).split()).casefold()
+    if html_encoded:
+        value = html.unescape(value)
+    return ' '.join(unicodedata.normalize('NFKC', value).split()).casefold()

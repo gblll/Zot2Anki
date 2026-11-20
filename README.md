@@ -8,7 +8,7 @@ Local example citations and source links display the paper title followed by the
 
 ## Install
 
-Validated baseline: **Windows x64, Python 3.13, Anki backends 26.5 / 26.9**, and PyMuPDF **1.28.2**. Zero-padded Anki versions 26.05 / 26.09 are also recognized; other 26.x or additional patch versions require separate validation and are not automatically accepted. Python and Anki must already be installed; they are not bundled. Other combinations fail the runtime gate before personal databases are opened.
+Runtime baseline: **Windows x64, Python 3.13**, and PyMuPDF **1.28.2**. Anki compatibility is checked by capability, not a version allowlist: every environment check and sync exercises the installed backend in temporary synthetic collections before accessing personal databases. Anki updates do not require adding their version to a list. The probe checks note creation and updates, identity and review preservation, and package export/import. A real API or format incompatibility stops the run with a diagnostic while leaving the original collection unchanged. Python and Anki must already be installed; they are not bundled.
 
 Extract the Windows ZIP to a writable local folder. Chinese characters and spaces are supported. From that folder:
 
@@ -39,6 +39,8 @@ CLI options override the JSON, which overrides defaults. Relative JSON paths sta
 ## Run
 
 Save edits and **normally exit Zotero and Anki yourself**. The tool never force-closes them.
+
+If the program reports that Zotero or Anki is running and exits with code `2`, the preflight check has stopped this run before database changes or a new report. Exit the applications normally, wait for their background processes to end, then retry. If their windows are already closed, check `zotero.exe` / `anki.exe` in Task Manager's Details tab. `-DryRun` also requires both applications to be closed; `-Check` only validates the environment and can run while they are open.
 
 ```powershell
 .\Syne_Zot2Anki.cmd -Check
@@ -87,7 +89,7 @@ node --test tests/core.test.js
 .\.venv\Scripts\python.exe tests/integration_anki.py
 ```
 
-Windows CI uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
+Windows CI keeps Anki 26.5 / 26.9 as regression baselines and also installs the latest stable Anki backend without a version pin. It uses only synthetic Zotero/PDF/Anki fixtures, checks raw APKG data, and installs the allowlisted ZIP in a fresh Chinese/space path. These checks do not guarantee compatibility with every future Anki change. Actual materials are validated only on consistent copies. The older Zotero plugin's source and pure-function tests remain; no XPI or real-device compatibility promise is included.
 
 GitHub Support confirmed removal of unreferenced commits on 2026-09-07. On 2026-09-08, both known affected commit pages returned 404 in an authenticated browser; this verifies those two pages, not every possible historical cache. The repository is public; rc.2, rc.3 and rc.4 were published as pre-releases. RC.4 supports Anki 26 and adds clearer synchronization progress; its assets and acceptance are bound to the exact release commit. Existing releases, tags and assets remain unchanged. RC.4 acceptance uses synthetic data only; historical real-data checks are not new RC.4 acceptance results.
 
